@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
+import { Check, Copy } from 'lucide-react'
 import { api } from '../../convex/_generated/api'
 import { AuthGate } from '../components/AuthGate'
 import { TopBar } from '../components/TopBar'
+import { TaskEditor } from '../components/TaskEditor'
+import type { EditorSubmission } from '../components/TaskEditor'
 import { formatLongDate, getISOWeek, todayString } from '../lib/weekUtils'
-import { formatHMM, parseHMM } from '../lib/time'
 
 export const Route = createFileRoute('/dashboard')({ component: DashboardPage })
 
@@ -22,88 +24,33 @@ function DashboardPage() {
   )
 }
 
-type Row = { label: string; hours: string }
-
-function emptyRows(): Array<Row> {
-  return [{ label: '', hours: '' }]
-}
-
 function Dashboard() {
   const today = useQuery(api.entries.getToday)
   const logEntry = useMutation(api.entries.logEntry)
 
-  const [rows, setRows] = useState<Array<Row>>(emptyRows)
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (today && today.tasks.length) {
-      setRows(today.tasks.map((t) => ({ label: t.label, hours: t.hours })))
-    }
-  }, [today])
 
   const dateStr = todayString()
   const longDate = formatLongDate(dateStr)
   const weekNo = getISOWeek()
 
-  const estimatedTotal = useMemo(() => {
-    try {
-      const lockedMins = rows
-        .filter((r) => r.hours.trim() !== '' && r.label.trim() !== '')
-        .reduce((s, r) => s + parseHMM(r.hours.trim()), 0)
-      const unlocked = rows.filter(
-        (r) => r.label.trim() !== '' && r.hours.trim() === '',
-      ).length
-      if (unlocked === rows.filter((r) => r.label.trim()).length) {
-        return null
-      }
-      if (unlocked === 0) return formatHMM(lockedMins)
-      return null
-    } catch {
-      return null
-    }
-  }, [rows])
+  const initialTasks = useMemo(
+    () =>
+      today?.tasks.map((t) => ({ label: t.label, hours: t.hours })) ?? [],
+    [today],
+  )
 
-  const onSubmit = async () => {
-    setError(null)
-    setToast(null)
-    const payload = rows
-      .filter((r) => r.label.trim() !== '')
-      .map((r) => {
-        const label = r.label.trim()
-        const hours = r.hours.trim()
-        if (!hours) return label
-        return { label, hours }
-      })
-    if (payload.length < 1 || payload.length > 3) {
-      setError('Log between 1 and 3 tasks')
-      return
-    }
+  const onSubmit = async (tasks: EditorSubmission) => {
     setBusy(true)
+    setToast(null)
     try {
-      const result = await logEntry({ tasks: payload })
+      const result = await logEntry({ tasks, date: dateStr })
       setToast(`Logged ${result.totalHours} hrs`)
       setTimeout(() => setToast(null), 2800)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to log entry')
     } finally {
       setBusy(false)
     }
-  }
-
-  const updateRow = (i: number, patch: Partial<Row>) => {
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-  }
-
-  const addRow = () => {
-    if (rows.length >= 3) return
-    setRows((prev) => [...prev, { label: '', hours: '' }])
-  }
-
-  const removeRow = (i: number) => {
-    if (rows.length <= 1) return
-    setRows((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   const isExisting = Boolean(today)
@@ -130,78 +77,26 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="space-y-3">
-        {rows.map((r, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-[#2a2826] bg-[#151515] p-3"
-          >
-            <input
-              type="text"
-              value={r.label}
-              onChange={(e) => updateRow(i, { label: e.target.value })}
-              placeholder={`Task ${i + 1}`}
-              className="bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-[#4a4741]"
-            />
-            <input
-              type="text"
-              value={r.hours}
-              onChange={(e) => updateRow(i, { hours: e.target.value })}
-              placeholder="auto"
-              className="w-20 rounded-md border border-[#2a2826] bg-[#0e0e0e] px-2 py-1.5 text-center font-mono text-sm outline-none placeholder:text-[#4a4741] focus:border-[#c9964a]"
-            />
-            <button
-              type="button"
-              onClick={() => removeRow(i)}
-              disabled={rows.length <= 1}
-              className="h-7 w-7 rounded-md border border-[#2a2826] text-[#8b8780] transition hover:border-[#c97b4a] hover:text-[#c97b4a] disabled:opacity-30 disabled:hover:border-[#2a2826] disabled:hover:text-[#8b8780]"
-              aria-label="Remove task"
-            >
-              −
-            </button>
-          </div>
-        ))}
+      <TaskEditor
+        key={today?._id ?? 'empty'}
+        initialTasks={initialTasks}
+        isBusy={busy}
+        primaryLabel={isExisting ? 'Update day' : 'Log day'}
+        onSubmit={onSubmit}
+        autoFocus={!isExisting}
+      />
 
-        <button
-          type="button"
-          onClick={addRow}
-          disabled={rows.length >= 3}
-          className="w-full rounded-lg border border-dashed border-[#2a2826] py-2.5 text-xs text-[#8b8780] transition hover:border-[#c9964a] hover:text-[#f0ede6] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#2a2826] disabled:hover:text-[#8b8780]"
-        >
-          + Add task {rows.length >= 3 ? '(max 3)' : ''}
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        {error ? (
-          <p className="font-mono text-xs text-[#c97b4a]">{error}</p>
-        ) : null}
-        {toast ? (
-          <p className="font-mono text-xs text-[#c9964a]">{toast}</p>
-        ) : null}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onSubmit()}
-          className="flex w-full items-center justify-between rounded-lg bg-[#c9964a] px-4 py-3 text-sm font-medium text-[#0e0e0e] transition hover:bg-[#d7a35a] disabled:opacity-50"
-        >
-          <span>
-            {busy
-              ? isExisting
-                ? 'Updating…'
-                : 'Logging…'
-              : isExisting
-                ? 'Update day'
-                : 'Log day'}
-          </span>
-          <span className="font-mono text-xs">
-            {estimatedTotal ?? 'auto'} hrs
-          </span>
-        </button>
-      </div>
+      {toast ? (
+        <p className="font-mono text-xs text-[#c9964a]">{toast}</p>
+      ) : null}
 
       {today ? (
-        <div className="rounded-lg border border-[#2a2826] bg-[#151515]/60 p-4 text-xs text-[#8b8780]">
+        <div className="relative rounded-lg border border-[#2a2826] bg-[#151515]/60 p-4 text-xs text-[#8b8780]">
+          <CopyEntryButton
+            date={longDate}
+            totalHours={today.totalHours}
+            tasks={today.tasks}
+          />
           <div className="mb-2 font-mono uppercase tracking-[0.2em]">
             Saved · {today.totalHours} hrs
           </div>
@@ -216,5 +111,62 @@ function Dashboard() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+function CopyEntryButton({
+  date,
+  totalHours,
+  tasks,
+}: {
+  date: string
+  totalHours: string
+  tasks: ReadonlyArray<{ label: string; hours: string }>
+}) {
+  const [copied, setCopied] = useState(false)
+
+  const formatted = useMemo(() => {
+    const lines = [`${date} — ${totalHours} hrs`]
+    for (const t of tasks) {
+      lines.push(`• ${t.label} (${t.hours})`)
+    }
+    return lines.join('\n')
+  }, [date, totalHours, tasks])
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(formatted)
+    } catch {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = formatted
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        ta.remove()
+      } catch {
+        return
+      }
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      aria-label="Copy entry to clipboard"
+      title={copied ? 'Copied' : 'Copy to clipboard'}
+      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded text-[#8b8780] transition hover:text-[#f0ede6]"
+    >
+      {copied ? (
+        <Check size={11} className="text-[#c9964a]" />
+      ) : (
+        <Copy size={11} />
+      )}
+    </button>
   )
 }

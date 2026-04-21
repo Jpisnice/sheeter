@@ -5,16 +5,11 @@ import { useAuthActions } from '@convex-dev/auth/react'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
-type Step = 'email' | 'otp'
-
 function LoginPage() {
   const router = useRouter()
   const { isAuthenticated, isLoading } = useConvexAuth()
   const { signIn } = useAuthActions()
 
-  const [step, setStep] = useState<Step>('email')
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -24,35 +19,13 @@ function LoginPage() {
     }
   }, [isLoading, isAuthenticated, router])
 
-  const requestCode = async () => {
+  const onGitHub = async () => {
     setError(null)
-    if (!email.trim()) {
-      setError('Enter your email')
-      return
-    }
     setBusy(true)
     try {
-      await signIn('resend-otp', { email: email.trim() })
-      setStep('otp')
+      await signIn('github', { redirectTo: '/dashboard' })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send code')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const verifyCode = async () => {
-    setError(null)
-    if (!code.trim()) {
-      setError('Enter the 6-digit code')
-      return
-    }
-    setBusy(true)
-    try {
-      await signIn('resend-otp', { email: email.trim(), code: code.trim() })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid code')
-    } finally {
+      setError(e instanceof Error ? e.message : 'Sign-in failed')
       setBusy(false)
     }
   }
@@ -69,90 +42,43 @@ function LoginPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-[#2a2826] bg-[#151515] p-6 shadow-[0_1px_0_rgba(255,255,255,0.02)_inset]">
-          {step === 'email' ? (
-            <div className="space-y-5">
-              <div>
-                <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-[#8b8780]">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  autoFocus
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void requestCode()
-                  }}
-                  placeholder="you@example.com"
-                  className="w-full rounded-md border border-[#2a2826] bg-[#0e0e0e] px-3 py-2 text-sm outline-none placeholder:text-[#4a4741] focus:border-[#c9964a]"
-                />
-              </div>
-              {error ? (
-                <p className="font-mono text-xs text-[#c97b4a]">{error}</p>
-              ) : null}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void requestCode()}
-                className="w-full rounded-md bg-[#c9964a] py-2 text-sm font-medium text-[#0e0e0e] transition hover:bg-[#d7a35a] disabled:opacity-50"
-              >
-                {busy ? 'Sending…' : 'Send code'}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              <div>
-                <p className="mb-4 text-xs text-[#8b8780]">
-                  We sent a 6-digit code to{' '}
-                  <span className="text-[#f0ede6]">{email}</span>.
-                </p>
-                <label className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-[#8b8780]">
-                  Code
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  autoFocus
-                  maxLength={6}
-                  value={code}
-                  onChange={(e) =>
-                    setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void verifyCode()
-                  }}
-                  placeholder="000000"
-                  className="w-full rounded-md border border-[#2a2826] bg-[#0e0e0e] px-3 py-2 text-center font-mono text-lg tracking-[0.4em] outline-none placeholder:text-[#4a4741] focus:border-[#c9964a]"
-                />
-              </div>
-              {error ? (
-                <p className="font-mono text-xs text-[#c97b4a]">{error}</p>
-              ) : null}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void verifyCode()}
-                className="w-full rounded-md bg-[#c9964a] py-2 text-sm font-medium text-[#0e0e0e] transition hover:bg-[#d7a35a] disabled:opacity-50"
-              >
-                {busy ? 'Verifying…' : 'Verify'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('email')
-                  setCode('')
-                  setError(null)
-                }}
-                className="w-full text-xs text-[#8b8780] hover:text-[#f0ede6]"
-              >
-                Use a different email
-              </button>
-            </div>
-          )}
+        <div className="rounded-xl border border-[#2a2826] bg-[#151515] p-6">
+          <div className="mb-5 space-y-1.5 text-center">
+            <h1 className="text-sm font-medium text-[#f0ede6]">Sign in</h1>
+            <p className="text-xs text-[#8b8780]">
+              Continue with your GitHub account.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onGitHub()}
+            className="flex w-full items-center justify-center gap-2.5 rounded-md border border-[#2a2826] bg-[#0e0e0e] px-4 py-2.5 text-sm font-medium text-[#f0ede6] transition hover:border-[#c9964a] disabled:opacity-50"
+          >
+            <GitHubMark />
+            <span>{busy ? 'Redirecting…' : 'Continue with GitHub'}</span>
+          </button>
+          {error ? (
+            <p className="mt-4 text-center font-mono text-xs text-[#c97b4a]">
+              {error}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
+  )
+}
+
+function GitHubMark() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 .297C5.373.297 0 5.67 0 12.297c0 5.302 3.438 9.8 8.205 11.387.6.11.82-.26.82-.577 0-.285-.01-1.04-.015-2.04-3.338.726-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.238 1.838 1.238 1.07 1.834 2.808 1.304 3.492.997.108-.776.42-1.305.762-1.605-2.665-.303-5.467-1.334-5.467-5.93 0-1.31.468-2.38 1.236-3.22-.124-.303-.536-1.523.117-3.176 0 0 1.008-.322 3.3 1.23a11.5 11.5 0 016.003 0c2.29-1.552 3.296-1.23 3.296-1.23.655 1.653.243 2.873.12 3.176.77.84 1.234 1.91 1.234 3.22 0 4.61-2.807 5.624-5.48 5.92.43.372.814 1.103.814 2.222 0 1.604-.015 2.896-.015 3.286 0 .32.216.694.824.576C20.565 22.092 24 17.597 24 12.297 24 5.67 18.627.297 12 .297" />
+    </svg>
   )
 }

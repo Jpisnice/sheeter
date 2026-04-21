@@ -34,7 +34,7 @@ http.route({
       !body ||
       typeof body !== 'object' ||
       !('tasks' in body) ||
-      !Array.isArray((body as { tasks: unknown }).tasks)
+      !Array.isArray(body.tasks)
     ) {
       return new Response(
         JSON.stringify({ error: 'tasks array required' }),

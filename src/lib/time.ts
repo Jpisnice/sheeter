@@ -9,6 +9,42 @@ export function parseHMM(hmm: string): number {
   return hours * 60 + mins
 }
 
+// Accepts friendly user input and returns canonical "H:MM".
+//   "3"     -> "3:00"
+//   "3.5"   -> "3:30"
+//   "1.25"  -> "1:15"
+//   "1:30"  -> "1:30"
+//   "1h30"  -> "1:30"
+//   "  "    -> ""      (empty string passes through unchanged)
+// Result is snapped to 15-minute increments. Throws on unparseable input.
+export function normalizeHoursInput(raw: string): string {
+  const s = raw.trim()
+  if (!s) return ''
+
+  let mins: number
+  const colon = /^(\d+):([0-5]\d)$/.exec(s)
+  const hSep = /^(\d+)\s*h\s*(\d{1,2})?$/i.exec(s)
+  const decimal = /^(\d+)(?:\.(\d+))?$/.exec(s)
+
+  if (colon) {
+    mins = Number(colon[1]) * 60 + Number(colon[2])
+  } else if (hSep) {
+    mins = Number(hSep[1]) * 60 + (hSep[2] ? Number(hSep[2]) : 0)
+  } else if (decimal) {
+    const hours = Number(decimal[1])
+    const frac = decimal[2] ? Number(`0.${decimal[2]}`) : 0
+    mins = Math.round((hours + frac) * 60)
+  } else {
+    throw new Error(`Invalid hours "${raw}" (try H:MM or a number like 3 or 2.5)`)
+  }
+
+  mins = snapTo15(mins)
+  if (mins < 15) {
+    throw new Error('Each task needs at least 15 minutes')
+  }
+  return formatHMM(mins)
+}
+
 export function formatHMM(totalMins: number): string {
   if (!Number.isFinite(totalMins) || totalMins < 0) {
     throw new Error(`Invalid total minutes: ${totalMins}`)

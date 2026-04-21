@@ -10,6 +10,7 @@ import {
 import {
   formatHMM,
   noisySplit,
+  normalizeHoursInput,
   parseHMM,
   randomBetween,
   snapTo15,
@@ -18,9 +19,10 @@ import {
   getISOWeek,
   getISOWeekYear,
   getWeekRange,
-  monthString,
   todayString,
 } from '../src/lib/weekUtils'
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 type InputTaskValidator =
   | string
@@ -56,17 +58,16 @@ function resolveHours(tasks: Array<InputTaskValidator>): Array<ResolvedTask> {
     if (t.hours == null || t.hours === '') {
       return { label, mins: null }
     }
-    let parsed: number
+    let canonical: string
     try {
-      parsed = parseHMM(t.hours)
-    } catch {
-      throw new ConvexError(`Invalid hours format "${t.hours}" (expected H:MM)`)
-    }
-    if (parsed % 15 !== 0) {
+      canonical = normalizeHoursInput(t.hours)
+    } catch (e) {
       throw new ConvexError(
-        `Hours must be a multiple of 15 minutes, got ${t.hours}`,
+        e instanceof Error ? e.message : `Invalid hours "${t.hours}"`,
       )
     }
+    if (!canonical) return { label, mins: null }
+    const parsed = parseHMM(canonical)
     if (parsed < 15) {
       throw new ConvexError('Each task needs at least 15 minutes')
     }
@@ -121,6 +122,7 @@ function resolveHours(tasks: Array<InputTaskValidator>): Array<ResolvedTask> {
 async function upsertEntry(
   ctx: MutationCtx,
   userId: Id<'users'>,
+  date: string,
   resolvedTasks: Array<ResolvedTask>,
   source: 'web' | 'shortcut',
 ): Promise<{
@@ -128,15 +130,19 @@ async function upsertEntry(
   totalHours: string
   tasks: Array<ResolvedTask>
 }> {
+  if (!DATE_RE.test(date)) {
+    throw new ConvexError(`Invalid date "${date}" (expected YYYY-MM-DD)`)
+  }
+
   const totalMins = resolvedTasks.reduce((s, t) => s + parseHMM(t.hours), 0)
   const totalHours = formatHMM(totalMins)
 
-  const date = todayString()
-  const now = new Date()
-  const weekNo = getISOWeek(now)
-  const year = getISOWeekYear(now)
+  const [y, m, d] = date.split('-').map(Number)
+  const asUtc = new Date(Date.UTC(y, m - 1, d))
+  const weekNo = getISOWeek(asUtc)
+  const year = getISOWeekYear(asUtc)
   const weekRange = getWeekRange(weekNo, year)
-  const month = monthString(0)
+  const month = date.slice(0, 7)
 
   const existing = await ctx.db
     .query('entries')
@@ -166,13 +172,31 @@ async function upsertEntry(
 }
 
 export const logEntry = mutation({
-  args: { tasks: v.array(inputTaskValidator) },
+  args: {
+    tasks: v.array(inputTaskValidator),
+    date: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx)
     if (!userId) throw new ConvexError('Not authenticated')
 
     const resolved = resolveHours(args.tasks)
-    return upsertEntry(ctx, userId, resolved, 'web')
+    return upsertEntry(ctx, userId, args.date ?? todayString(), resolved, 'web')
+  },
+})
+
+export const deleteEntry = mutation({
+  args: { entryId: v.id('entries') },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx)
+    if (!userId) throw new ConvexError('Not authenticated')
+    const entry = await ctx.db.get(args.entryId)
+    if (!entry) throw new ConvexError('Entry not found')
+    if (entry.userId !== userId) {
+      throw new ConvexError('You can only delete your own entries')
+    }
+    await ctx.db.delete(args.entryId)
+    return { ok: true }
   },
 })
 
@@ -190,7 +214,7 @@ export const logEntryFromShortcut = internalMutation({
     }
 
     const resolved = resolveHours(args.tasks)
-    return upsertEntry(ctx, userId, resolved, 'shortcut')
+    return upsertEntry(ctx, userId, todayString(), resolved, 'shortcut')
   },
 })
 

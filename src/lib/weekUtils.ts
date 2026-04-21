@@ -66,11 +66,17 @@ export function getWeekRange(weekNo: number, year: number): string {
   return `${monStr} – ${friStr}`
 }
 
-// Returns an array of 5 "YYYY-MM-DD" strings for Mon–Fri of the given ISO week.
-export function getWeekdayDates(weekNo: number, year: number): Array<string> {
+// Returns an array of "YYYY-MM-DD" strings for the given ISO week.
+// By default returns Mon–Fri (5 days); pass `includeWeekend` for Mon–Sun.
+export function getWeekdayDates(
+  weekNo: number,
+  year: number,
+  includeWeekend: boolean = false,
+): Array<string> {
   const monday = getISOWeekMonday(weekNo, year)
+  const count = includeWeekend ? 7 : 5
   const out: Array<string> = []
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < count; i++) {
     const d = new Date(monday)
     d.setUTCDate(monday.getUTCDate() + i)
     out.push(
@@ -78,6 +84,14 @@ export function getWeekdayDates(weekNo: number, year: number): Array<string> {
     )
   }
   return out
+}
+
+// Returns true if the given "YYYY-MM-DD" date falls on Saturday or Sunday.
+export function isWeekendDate(dateStr: string): boolean {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  const day = date.getUTCDay()
+  return day === 0 || day === 6
 }
 
 export function todayString(): string {
