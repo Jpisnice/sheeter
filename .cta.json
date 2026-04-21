@@ -1,0 +1,23 @@
+{
+  "projectName": "sheeter",
+  "mode": "file-router",
+  "typescript": true,
+  "packageManager": "npm",
+  "includeExamples": false,
+  "tailwind": true,
+  "addOnOptions": {},
+  "envVarValues": {
+    "CONVEX_DEPLOYMENT": "sheeter",
+    "VITE_CONVEX_URL": "https://patient-dinosaur-930.convex.cloud"
+  },
+  "git": true,
+  "install": true,
+  "routerOnly": false,
+  "version": 1,
+  "framework": "react",
+  "chosenAddOns": [
+    "eslint",
+    "railway",
+    "convex"
+  ]
+}
