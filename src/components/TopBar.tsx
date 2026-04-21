@@ -37,6 +37,13 @@ export function TopBar() {
           >
             History
           </Link>
+          <Link
+            to="/settings"
+            activeProps={{ className: 'text-[#c9964a]' }}
+            className="text-[#8b8780] hover:text-[#f0ede6]"
+          >
+            Settings
+          </Link>
           {me?.email ? (
             <span className="hidden text-xs text-[#8b8780] sm:inline">
               {me.email}

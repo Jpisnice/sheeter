@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite dev --port 3000",
     "build": "vite build",
-    "build:vercel": "convex deploy --cmd 'vite build'",
+    "build:vercel": "npxconvex deploy --cmd 'vite build'",
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "eslint",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@auth/core": "^0.37.4",
     "@convex-dev/auth": "^0.0.91",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/react-query": "0.1.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",

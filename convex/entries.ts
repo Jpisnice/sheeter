@@ -201,20 +201,31 @@ export const deleteEntry = mutation({
 })
 
 export const logEntryFromShortcut = internalMutation({
-  args: { tasks: v.array(inputTaskValidator) },
+  args: {
+    userId: v.id('users'),
+    tokenId: v.id('shortcutTokens'),
+    tasks: v.array(inputTaskValidator),
+  },
   handler: async (ctx, args) => {
-    const ownerId = process.env.OWNER_USER_ID
-    if (!ownerId) {
-      throw new ConvexError('OWNER_USER_ID env var is not configured')
-    }
-    const userId = ownerId as Id<'users'>
-    const ownerDoc = await ctx.db.get(userId)
+    const ownerDoc = await ctx.db.get(args.userId)
     if (!ownerDoc) {
-      throw new ConvexError('OWNER_USER_ID does not point to a valid user')
+      throw new ConvexError('Token user no longer exists')
+    }
+    const tokenDoc = await ctx.db.get(args.tokenId)
+    if (!tokenDoc || tokenDoc.userId !== args.userId) {
+      throw new ConvexError('Token was revoked')
     }
 
     const resolved = resolveHours(args.tasks)
-    return upsertEntry(ctx, userId, todayString(), resolved, 'shortcut')
+    const result = await upsertEntry(
+      ctx,
+      args.userId,
+      todayString(),
+      resolved,
+      'shortcut',
+    )
+    await ctx.db.patch(args.tokenId, { lastUsedAt: Date.now() })
+    return result
   },
 })
 
