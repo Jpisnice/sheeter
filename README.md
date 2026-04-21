@@ -79,6 +79,7 @@ This means:
 - Multiple users can share one deployment — each with their own tokens.
 - A single user can keep multiple tokens (e.g. iPhone, Watch, test script) and revoke them independently.
 - Losing a device never reveals the token to anyone with DB read access, and revoking is instant.
+- Every write path is rate-limited (see [Rate limits](#5-rate-limits)) so a leaked token has a hard ceiling on damage.
 
 ### Endpoint
 
@@ -182,7 +183,9 @@ Total must be between `7:30` and `8:00`.
 
 ### 4. Test from a terminal first
 
-Before fiddling with the Shortcuts UI, confirm the endpoint works (the Settings page has a copy button for this exact snippet):
+Before fiddling with the Shortcuts UI, confirm the endpoint works. The Settings page has copy buttons for both snippets below.
+
+**macOS / Linux / WSL / Git Bash** (single-quoted JSON passes through cleanly):
 
 ```bash
 curl -X POST "$VITE_CONVEX_SITE_URL/log" \
@@ -191,23 +194,63 @@ curl -X POST "$VITE_CONVEX_SITE_URL/log" \
   -d '{"tasks":["Shortcut smoke test"]}'
 ```
 
-Expected: `200` with an `ok: true` payload. Common failures:
+**Windows PowerShell** — **do not** use `curl.exe` here. PowerShell 5.x strips embedded `"` when invoking native exes, so `{"tasks":…}` reaches the server mangled and you get `400 Invalid JSON body`. Use `Invoke-RestMethod` instead:
+
+```powershell
+$token = "sk_..."
+$body  = '{"tasks":["Deep work","Code review","Meetings"]}'
+
+Invoke-RestMethod `
+  -Uri "https://<your-deployment>.convex.site/log" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Headers @{ "x-shortcut-token" = $token } `
+  -Body $body
+```
+
+If you really must use curl from PowerShell, stop PowerShell's argument parser with `--%` and escape every inner `"` as `\"`:
+
+```powershell
+curl.exe --% -X POST "https://<your-deployment>.convex.site/log" -H "content-type: application/json" -H "x-shortcut-token: sk_..." -d "{\"tasks\":[\"Deep work\",\"Code review\",\"Meetings\"]}"
+```
+
+Expected in all cases: `200` with an `ok: true` payload. Common failures:
 
 | Status | Cause |
 | ------ | ----- |
 | `401 Unauthorized` | Missing `x-shortcut-token` header, or the token isn't in the `shortcutTokens` table (maybe revoked or mistyped). |
-| `400 Invalid JSON body` | Body wasn't valid JSON. |
+| `429 Rate limit exceeded` | You hit a bucket. Response includes a `retry-after` header (seconds) and a `scope` field (`"global"` or `"token"`). See [Rate limits](#5-rate-limits). |
+| `400 Invalid JSON body` | Body wasn't valid JSON. On Windows this almost always means `curl.exe` in PowerShell stripped your quotes — switch to `Invoke-RestMethod`. |
 | `400 tasks array required` | Body is missing `tasks` or it isn't a JSON array. |
 | `400 Tasks must be between 1 and 3` | Sent 0 or 4+ tasks. |
 | `400 Total hours must be between 7:30 and 8:00` | All tasks had `hours` but sum is outside the daily range. |
 | `400 Token was revoked` | The token row was deleted between lookup and write (extremely rare — just create a new one). |
 
-### 5. Security notes
+### 5. Rate limits
+
+All abuse-facing write paths go through the [`@convex-dev/rate-limiter`](https://www.convex.dev/components/rate-limiter) component. Limits are declared in one place (`convex/rateLimiter.ts`) so they're easy to audit or tune:
+
+| Bucket | Kind | Limit | Scope | Applies to |
+| ------ | ---- | ----- | ----- | ---------- |
+| `logGlobal` | fixed window | 600 / minute | entire deployment | pre-auth guard on `POST /log` so a scanner can't burn a deployment's compute before we even hash a token |
+| `logPerToken` | token bucket | 30 / minute, burst 10 | per `shortcutTokens` row | lets a shortcut retry a few times in a row, but caps a leaked token at ~30 writes/minute |
+| `createToken` | fixed window | 5 / hour | per user | combined with the hard 10-token-per-user cap, prevents churning tokens to defeat the cap |
+
+Behavior:
+
+- `POST /log` applies `logGlobal` first (before token lookup), then `logPerToken` after the token hash resolves to a row. A 429 response includes `scope: "global" | "token"`, an integer `retryAfterSeconds` in the body, and a standard HTTP `retry-after` header.
+- `shortcutTokens.create` throws a `ConvexError("Too many tokens created recently. Try again in N minute(s).")` when the per-user bucket is drained — the Settings UI surfaces that message directly in the dialog.
+- Limits are stored in Convex's rate-limiter component tables, so they survive deploys and are consistent across serverless instances.
+
+To change a limit, edit `convex/rateLimiter.ts` and redeploy — no schema migration needed.
+
+### 6. Security notes
 
 - The `sk_…` value is a bearer credential — anyone with it can write an entry as that user. Treat it like a password.
 - Plaintext tokens are never stored: only SHA-256 hashes live in the DB. The Convex dashboard won't reveal a usable token.
 - To rotate: revoke the old row in Settings, create a new token, update your Shortcut's header.
 - The endpoint only supports **today's** date by design; historical edits stay gated behind the logged-in web app.
+- Rate limits above give defense-in-depth: a leaked token is capped, and burst/DDoS attempts return 429 before touching the DB.
 
 
 

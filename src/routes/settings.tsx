@@ -224,6 +224,15 @@ function ShortcutEndpointCard() {
         </code>
         . Total must fall between 7:30 and 8:00.
       </div>
+      <div className="mt-2 text-[11px] leading-relaxed text-[#6d6b67]">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]">
+          Rate limits
+        </span>{' '}
+        — 30 requests / minute per token (burst 10), 600 / minute across the
+        whole deployment, and 5 new tokens / hour per account. Limit breaches
+        return <code className="font-mono text-[#f0ede6]">429</code> with a{' '}
+        <code className="font-mono text-[#f0ede6]">retry-after</code> header.
+      </div>
     </div>
   )
 }
@@ -508,7 +517,13 @@ function ShortcutRecipeCard() {
         </li>
         <li>
           Request Body (JSON):{' '}
-          <code className="font-mono text-[#f0ede6]">{bodyJson}</code>.
+          <code className="font-mono text-[#f0ede6]">{bodyJson}</code>. Each
+          task is either a bare string (hours auto-split between 7:30 and
+          8:00) or an object{' '}
+          <code className="font-mono text-[#f0ede6]">
+            {'{"label":"…","hours":"2:30"}'}
+          </code>
+          . 1–3 tasks per call.
         </li>
         <li>
           Save as <span className="text-[#f0ede6]">Log today</span>, add to
@@ -522,16 +537,20 @@ function ShortcutRecipeCard() {
         <p className="font-mono text-[10px] leading-relaxed text-[#6d6b67]">
           Replace{' '}
           <code className="text-[#8b8780]">{tokenPlaceholder}</code> with a
-          token from the list above. Expect a{' '}
-          <code className="text-[#8b8780]">200</code> with{' '}
-          <code className="text-[#8b8780]">{'{"ok":true,…}'}</code>; a{' '}
-          <code className="text-[#8b8780]">401</code> means the token is wrong
-          or revoked; a{' '}
-          <code className="text-[#8b8780]">400</code> with{' '}
+          token from the list above. Expect{' '}
+          <code className="text-[#8b8780]">200</code> +{' '}
+          <code className="text-[#8b8780]">{'{"ok":true,…}'}</code>.{' '}
+          <code className="text-[#8b8780]">401</code> = token missing or
+          revoked.{' '}
+          <code className="text-[#8b8780]">429</code> = rate-limited — the{' '}
+          <code className="text-[#8b8780]">retry-after</code> header tells
+          you how many seconds to wait.{' '}
+          <code className="text-[#8b8780]">400</code> +{' '}
           <code className="text-[#8b8780]">{'{"error":"Invalid JSON body"}'}</code>{' '}
-          usually means your shell mangled the body quotes — on Windows use the
-          PowerShell snippet (it avoids <code className="text-[#8b8780]">curl.exe</code>{' '}
-          because PowerShell strips embedded quotes when calling native exes).
+          usually means your shell mangled the body quotes — on Windows use
+          the PowerShell snippet (it avoids{' '}
+          <code className="text-[#8b8780]">curl.exe</code> because PowerShell
+          strips embedded quotes when calling native exes).
         </p>
       </div>
     </div>
