@@ -1,5 +1,19 @@
+@import 'tailwindcss';
 
-@import "tailwindcss";
+@theme {
+  --color-bg: #0e0e0e;
+  --color-surface: #151515;
+  --color-surface-2: #1c1c1c;
+  --color-border: #2a2826;
+  --color-fg: #f0ede6;
+  --color-muted: #8b8780;
+  --color-accent: #c9964a;
+  --color-accent-soft: #8e6a33;
+  --color-danger: #c97b4a;
+
+  --font-sans: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
 
 * {
   box-sizing: border-box;
@@ -11,7 +25,31 @@ body,
   min-height: 100%;
 }
 
+html {
+  color-scheme: dark;
+}
+
 body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+}
+
+/* Remove default number spinners */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
   margin: 0;
 }
 
+::selection {
+  background: rgba(201, 150, 74, 0.35);
+}
