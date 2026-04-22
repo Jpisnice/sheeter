@@ -21,6 +21,27 @@ import {
 
 export const Route = createFileRoute('/history')({ component: HistoryPage })
 
+// Upper bound on the one-line task summary shown in a collapsed day row.
+// Keeps the row a predictable width so the time badge on the right is always
+// visible, no matter how wordy the tasks are. Picked to comfortably fit the
+// 3xl max-width container at text-sm on a normal laptop screen. The expanded
+// view (click to open the row) shows each task in full on its own line.
+const MAX_SUMMARY_CHARS = 56
+const TASK_SEPARATOR = ' · '
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s
+  // Use a single ellipsis char to preserve a fixed visual width.
+  return `${s.slice(0, Math.max(0, max - 1)).trimEnd()}…`
+}
+
+function summarizeTasks(tasks: ReadonlyArray<{ label: string }>): string {
+  return truncate(
+    tasks.map((t) => t.label).join(TASK_SEPARATOR),
+    MAX_SUMMARY_CHARS,
+  )
+}
+
 function HistoryPage() {
   return (
     <AuthGate>
@@ -335,36 +356,42 @@ function DayRow({
   return (
     <div className="border-b border-[#2a2826] last:border-b-0">
       <div className="flex items-center gap-2 px-4 py-3 text-sm">
+        {/* min-w-0 is crucial: without it the inner truncate span would
+            force the button to grow past its flex-1 share, squeezing the
+            time column on the right out of view on long task labels. */}
         <button
           type="button"
           onClick={onToggleOpen}
-          className="flex flex-1 items-center gap-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          title={entry ? entry.tasks.map((t) => t.label).join(TASK_SEPARATOR) : undefined}
         >
-          <span className="text-[#4a4741]">
+          <span className="shrink-0 text-[#4a4741]">
             {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
           <span
-            className={`w-24 font-mono text-xs ${
+            className={`w-24 shrink-0 font-mono text-xs ${
               weekend ? 'text-[#6d6b67]' : 'text-[#8b8780]'
             }`}
           >
             {formatShortDate(dateStr)}
           </span>
           {entry ? (
-            <span className="truncate text-[#f0ede6]">
-              {entry.tasks.map((t) => t.label).join(' · ')}
+            <span className="min-w-0 flex-1 truncate text-[#f0ede6]">
+              {summarizeTasks(entry.tasks)}
             </span>
           ) : (
-            <span className="text-[#4a4741]">— not logged —</span>
+            <span className="min-w-0 flex-1 truncate text-[#4a4741]">
+              — not logged —
+            </span>
           )}
         </button>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {entry?.source === 'shortcut' ? (
             <span className="rounded-sm bg-[#2a2826] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[#c9964a]">
               shortcut
             </span>
           ) : null}
-          <span className="font-mono text-xs text-[#c9964a]">
+          <span className="w-10 text-right font-mono text-xs tabular-nums text-[#c9964a]">
             {entry?.totalHours ?? ''}
           </span>
           {!entry && !isEditing ? (
