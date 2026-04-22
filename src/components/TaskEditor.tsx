@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { formatHMM, normalizeHoursInput, parseHMM } from '../lib/time'
+import {
+  formatHMM,
+  normalizeHoursInput,
+  parseHMM,
+  sanitizeHoursInput,
+} from '../lib/time'
 import { Dialog } from './Dialog'
 
 export type EditorTask = { label: string; hours: string }
@@ -10,7 +15,9 @@ const MAX_TASKS = 3
 const DAY_MIN_MINS = 450
 const DAY_MAX_MINS = 480
 
-type Row = { id: string; label: string; hours: string }
+type Row = { id: string; label: string; hours: string; leaving?: boolean }
+
+const LEAVE_MS = 180
 
 function makeId() {
   return Math.random().toString(36).slice(2, 10)
@@ -68,11 +75,15 @@ export function TaskEditor({
     setConfirmingDelete(false)
   }, [initialTasks])
 
+  // Rows currently animating out are still in state (so their exit keyframes
+  // can play) but must not count toward validation, totals, or limits.
+  const activeRows = useMemo(() => rows.filter((r) => !r.leaving), [rows])
+
   const anyLocked = useMemo(() => {
-    return rows.some(
+    return activeRows.some(
       (r) => lockedIds.has(r.id) && r.hours.trim() !== '' && r.label.trim() !== '',
     )
-  }, [rows, lockedIds])
+  }, [activeRows, lockedIds])
 
   const isEffectivelyLocked = (r: Row): boolean => {
     if (r.label.trim() === '' || r.hours.trim() === '') return false
@@ -82,7 +93,7 @@ export function TaskEditor({
 
   const estimatedTotal = useMemo(() => {
     try {
-      const labelled = rows.filter((r) => r.label.trim() !== '')
+      const labelled = activeRows.filter((r) => r.label.trim() !== '')
       if (labelled.length === 0) return null
       const lockedRows = labelled.filter(isEffectivelyLocked)
       const unlockedCount = labelled.length - lockedRows.length
@@ -95,7 +106,7 @@ export function TaskEditor({
     } catch {
       return null
     }
-  }, [rows, lockedIds, anyLocked])
+  }, [activeRows, lockedIds, anyLocked])
 
   const updateLabel = (id: string, label: string) => {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, label } : r)))
@@ -110,24 +121,31 @@ export function TaskEditor({
     })
   }
   const addRow = () => {
-    if (rows.length >= MAX_TASKS) return
+    if (activeRows.length >= MAX_TASKS) return
     setRows((prev) => [...prev, { id: makeId(), label: '', hours: '' }])
   }
   const removeRow = (id: string) => {
-    if (rows.length <= 1) return
-    setRows((prev) => prev.filter((r) => r.id !== id))
+    if (activeRows.length <= 1) return
+    // Mark the row as leaving so it plays its exit animation, then drop it
+    // from state once the animation is done.
+    setRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, leaving: true } : r)),
+    )
     setLockedIds((prev) => {
       if (!prev.has(id)) return prev
       const next = new Set(prev)
       next.delete(id)
       return next
     })
+    window.setTimeout(() => {
+      setRows((prev) => prev.filter((r) => r.id !== id))
+    }, LEAVE_MS)
   }
 
   const buildPayload = ():
     | { ok: true; payload: EditorSubmission; lockedMins: number; unlockedCount: number }
     | { ok: false; error: string } => {
-    const labelled = rows.filter((r) => r.label.trim() !== '')
+    const labelled = activeRows.filter((r) => r.label.trim() !== '')
     if (labelled.length < 1 || labelled.length > MAX_TASKS) {
       return { ok: false, error: `Log between 1 and ${MAX_TASKS} tasks` }
     }
@@ -239,7 +257,7 @@ export function TaskEditor({
 
   const willRedistribute =
     anyLocked &&
-    rows.some(
+    activeRows.some(
       (r) =>
         r.label.trim() !== '' &&
         r.hours.trim() !== '' &&
@@ -252,23 +270,44 @@ export function TaskEditor({
         {rows.map((r, i) => {
           const dim =
             anyLocked && !lockedIds.has(r.id) && r.hours.trim() !== ''
+          const isLeaving = r.leaving === true
           return (
             <div
               key={r.id}
-              className="grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border border-[#2a2826] bg-[#0e0e0e] p-2"
+              className={`grid grid-cols-[1fr_auto_auto] items-center gap-2 rounded-md border border-[#2a2826] bg-[#0e0e0e] p-2 transition-colors duration-200 focus-within:border-[#c9964a]/50 focus-within:bg-[#101010] ${
+                isLeaving ? 'task-row-leaving' : 'task-row'
+              }`}
+              style={
+                isLeaving ? undefined : { animationDelay: `${i * 30}ms` }
+              }
+              aria-hidden={isLeaving || undefined}
             >
-              <input
-                type="text"
-                value={r.label}
-                autoFocus={autoFocus && i === 0}
-                onChange={(e) => updateLabel(r.id, e.target.value)}
-                placeholder={`Task ${i + 1}`}
-                className="bg-transparent px-1 py-1 text-sm outline-none placeholder:text-[#4a4741]"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={r.label}
+                  autoFocus={autoFocus && i === 0}
+                  onChange={(e) => updateLabel(r.id, e.target.value)}
+                  placeholder={`Task ${i + 1}`}
+                  disabled={isLeaving}
+                  maxLength={80}
+                  className="w-full bg-transparent px-1 py-1 text-sm caret-[#c9964a] outline-none transition-colors duration-150 placeholder:text-[#4a4741]"
+                />
+                {/* Per-keystroke underline pulse. The `key` changes on every
+                    label mutation, so React re-mounts this span and the CSS
+                    animation replays — the classic "retrigger" trick. */}
+                <span
+                  key={r.label}
+                  aria-hidden
+                  className="task-type-stroke pointer-events-none absolute inset-x-1 bottom-0 block h-px rounded-full bg-[#c9964a]"
+                />
+              </div>
               <input
                 type="text"
                 value={r.hours}
-                onChange={(e) => updateHours(r.id, e.target.value)}
+                onChange={(e) =>
+                  updateHours(r.id, sanitizeHoursInput(e.target.value))
+                }
                 onBlur={() => {
                   const raw = r.hours.trim()
                   if (!raw) return
@@ -278,27 +317,31 @@ export function TaskEditor({
                       updateHours(r.id, normalized)
                     }
                   } catch {
-                    /* keep user input */
+                    /* keep user input so they can fix the typo */
                   }
                 }}
                 placeholder="auto"
+                disabled={isLeaving}
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={5}
                 title={
                   dim
                     ? 'Will auto-adjust. Type to lock this value.'
-                    : 'Leave blank for auto, or enter 3, 2.5, 1:30'
+                    : 'Enter hours as 3, 230 (= 2:30), 500 (= 5:00), or 1:30. Max 8:00.'
                 }
-                className={`w-16 rounded-md border bg-[#151515] px-2 py-1 text-center font-mono text-xs outline-none placeholder:text-[#4a4741] focus:border-[#c9964a] ${
+                className={`w-16 rounded-md border bg-[#151515] px-2 py-1 text-center font-mono text-xs caret-[#c9964a] outline-none transition-all duration-200 placeholder:text-[#4a4741] focus:border-[#c9964a] ${
                   dim
                     ? 'border-dashed border-[#2a2826] italic text-[#6d6b67]'
-                    : 'border-[#2a2826]'
+                    : 'border-[#2a2826] text-[#f0ede6]'
                 }`}
               />
               <button
                 type="button"
                 onClick={() => removeRow(r.id)}
-                disabled={rows.length <= 1}
+                disabled={activeRows.length <= 1 || isLeaving}
                 aria-label="Remove task"
-                className="flex h-6 w-6 items-center justify-center rounded text-[#8b8780] transition hover:text-[#c97b4a] disabled:opacity-30 disabled:hover:text-[#8b8780]"
+                className="flex h-6 w-6 items-center justify-center rounded text-[#8b8780] transition-all duration-150 hover:scale-110 hover:text-[#c97b4a] active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:text-[#8b8780]"
               >
                 <X size={12} />
               </button>
@@ -309,11 +352,15 @@ export function TaskEditor({
         <button
           type="button"
           onClick={addRow}
-          disabled={rows.length >= MAX_TASKS}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[#2a2826] py-2 text-[11px] text-[#8b8780] transition hover:border-[#c9964a] hover:text-[#f0ede6] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#2a2826] disabled:hover:text-[#8b8780]"
+          disabled={activeRows.length >= MAX_TASKS}
+          className="group flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[#2a2826] py-2 text-[11px] text-[#8b8780] transition-all duration-200 hover:border-[#c9964a] hover:text-[#f0ede6] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#2a2826] disabled:hover:text-[#8b8780]"
         >
-          <Plus size={11} /> Add task
-          {rows.length >= MAX_TASKS ? ' (max 3)' : ''}
+          <Plus
+            size={11}
+            className="transition-transform duration-200 group-enabled:group-hover:rotate-90"
+          />{' '}
+          Add task
+          {activeRows.length >= MAX_TASKS ? ' (max 3)' : ''}
         </button>
       </div>
 
@@ -335,7 +382,12 @@ export function TaskEditor({
           className="flex flex-1 items-center justify-between rounded-md bg-[#c9964a] px-3 py-2 text-xs font-medium text-[#0e0e0e] transition hover:bg-[#d7a35a] disabled:opacity-50"
         >
           <span>{isBusy ? 'Saving…' : primaryLabel}</span>
-          <span className="font-mono">{estimatedTotal ?? 'auto'} hrs</span>
+          <span className="font-mono">
+            <span key={estimatedTotal ?? 'auto'} className="task-total-pulse">
+              {estimatedTotal ?? 'auto'}
+            </span>{' '}
+            hrs
+          </span>
         </button>
         {onCancel ? (
           <button
