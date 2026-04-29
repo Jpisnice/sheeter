@@ -2,6 +2,7 @@ import { Link, useRouter } from '@tanstack/react-router'
 import { useQuery } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { api } from '../../convex/_generated/api'
+import { Logo } from './Logo'
 
 export function TopBar() {
   const router = useRouter()
@@ -18,9 +19,9 @@ export function TopBar() {
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5">
         <Link
           to="/dashboard"
-          className="font-mono text-sm tracking-tight text-[#f0ede6] hover:text-[#c9964a]"
+          className="text-[#f0ede6] hover:text-[#c9964a]"
         >
-          sheeter<span className="text-[#c9964a]">.</span>
+          <Logo markClassName="h-7 w-7 rounded-md" />
         </Link>
         <nav className="flex items-center gap-5 text-sm">
           <Link

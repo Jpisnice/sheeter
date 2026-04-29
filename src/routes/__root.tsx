@@ -10,6 +10,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import ConvexProvider from '../integrations/convex/provider'
 
 import appCss from '../styles.css?url'
+import logoUrl from '../sheeter-logo.svg?url'
 
 export const Route = createRootRoute({
   head: () => ({
@@ -23,6 +24,7 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
+      { rel: 'icon', type: 'image/svg+xml', href: logoUrl },
       {
         rel: 'preconnect',
         href: 'https://fonts.googleapis.com',

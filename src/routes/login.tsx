@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useConvexAuth } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
+import { Logo } from '../components/Logo'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
@@ -34,9 +35,10 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="font-mono text-sm tracking-tight text-[#f0ede6]">
-            sheeter<span className="text-[#c9964a]">.</span>
-          </div>
+          <Logo
+            className="justify-center"
+            markClassName="h-10 w-10 rounded-xl"
+          />
           <p className="mt-1 text-xs text-[#8b8780]">
             a quiet little timesheet logger
           </p>
