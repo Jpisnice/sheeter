@@ -92,6 +92,7 @@ function History() {
   const [error, setError] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<null | 'week' | 'month'>(null)
   const [exportMonthYm, setExportMonthYm] = useState(() => monthString(0))
+  const [exportOpen, setExportOpen] = useState(false)
   const exportSectionRef = useRef<HTMLElement>(null)
   const locationHash = useRouterState({ select: (s) => s.location.hash })
 
@@ -106,6 +107,7 @@ function History() {
 
   useEffect(() => {
     if (locationHash !== '#export' || !exportSectionRef.current) return
+    setExportOpen(true)
     exportSectionRef.current.scrollIntoView({
       behavior: 'smooth',
       block: 'start',
@@ -322,100 +324,115 @@ function History() {
         ref={exportSectionRef}
         id="export"
         aria-labelledby="history-export-heading"
-        className="scroll-mt-6 rounded-lg border border-[#2a2826] bg-[#151515]/60 p-5"
+        className="scroll-mt-6 rounded-lg border border-[#2a2826] bg-[#151515]/60"
       >
-        <h2
-          id="history-export-heading"
-          className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]"
+        <button
+          type="button"
+          onClick={() => setExportOpen((v) => !v)}
+          className="flex w-full items-center justify-between px-5 py-4 text-left"
+          aria-expanded={exportOpen}
+          aria-controls="history-export-content"
         >
-          Export
-        </h2>
-        <p className="mt-2 max-w-prose text-xs leading-relaxed text-[#8b8780]">
-          Preview matches your saved layout from{' '}
-          <Link
-            to="/settings/export"
-            className="text-[#c9964a] underline decoration-[#2a2826] underline-offset-2 hover:decoration-[#c9964a]"
+          <h2
+            id="history-export-heading"
+            className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]"
           >
-            Settings → Export layout
-          </Link>
-          . Month exports use the calendar month you pick below.
-        </p>
+            Export
+          </h2>
+          <span className="font-mono text-xs text-[#8b8780]">
+            {exportOpen ? 'Hide' : 'Show'}
+          </span>
+        </button>
 
-        <div className="mt-6 space-y-6">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
-              Current period
-            </div>
-            <p className="mt-1 text-xs text-[#8b8780]">
-              Exports exactly what is shown above ({chunk.startDate} to{' '}
-              {chunk.endDate}).
+        {exportOpen ? (
+          <div id="history-export-content" className="border-t border-[#2a2826] px-5 py-5">
+            <p className="max-w-prose text-xs leading-relaxed text-[#8b8780]">
+              Preview matches your saved layout from{' '}
+              <Link
+                to="/settings/export"
+                className="text-[#c9964a] underline decoration-[#2a2826] underline-offset-2 hover:decoration-[#c9964a]"
+              >
+                Settings → Export layout
+              </Link>
+              . Month exports use the calendar month you pick below.
             </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPreviewMode('week')}
-                disabled={!entries?.length}
-                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
-              >
-                Preview this period
-              </button>
-              <button
-                type="button"
-                onClick={() => void exportPeriod()}
-                disabled={exporting || !entries?.length}
-                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
-              >
-                {exporting ? 'Preparing…' : 'Export this period XLSX'}
-              </button>
-            </div>
-          </div>
 
-          <div className="border-t border-[#2a2826] pt-6">
-            <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
-              Month
-            </div>
-            <p className="mt-1 text-xs text-[#8b8780]">
-              Choose any month (past or a few ahead), then preview or download.
-            </p>
-            <label className="mt-3 block max-w-xs">
-              <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-[#8b8780]">
-                Calendar month
-              </span>
-              <select
-                value={exportMonthYm}
-                onChange={(e) => setExportMonthYm(e.target.value)}
-                className="w-full rounded-md border border-[#2a2826] bg-[#0e0e0e] px-3 py-2 font-mono text-sm text-[#f0ede6] outline-none focus:border-[#c9964a]"
-              >
-                {monthMenuOptions().map((ym) => (
-                  <option key={ym} value={ym}>
-                    {formatMonthLongYear(ym)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPreviewMode('month')}
-                disabled={exporting}
-                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
-              >
-                Preview month
-              </button>
-              <button
-                type="button"
-                onClick={() => void exportMonth()}
-                disabled={exporting}
-                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
-              >
-                {exporting ? 'Preparing…' : 'Export month XLSX'}
-              </button>
-            </div>
-          </div>
-        </div>
+            <div className="mt-6 space-y-6">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
+                  Current period
+                </div>
+                <p className="mt-1 text-xs text-[#8b8780]">
+                  Exports exactly what is shown above ({chunk.startDate} to{' '}
+                  {chunk.endDate}).
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('week')}
+                    disabled={!entries?.length}
+                    className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+                  >
+                    Preview this period
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportPeriod()}
+                    disabled={exporting || !entries?.length}
+                    className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
+                  >
+                    {exporting ? 'Preparing…' : 'Export this period XLSX'}
+                  </button>
+                </div>
+              </div>
 
-        {error ? (
-          <p className="mt-4 font-mono text-xs text-[#c97b4a]">{error}</p>
+              <div className="border-t border-[#2a2826] pt-6">
+                <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
+                  Month
+                </div>
+                <p className="mt-1 text-xs text-[#8b8780]">
+                  Choose any month (past or a few ahead), then preview or download.
+                </p>
+                <label className="mt-3 block max-w-xs">
+                  <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-[#8b8780]">
+                    Calendar month
+                  </span>
+                  <select
+                    value={exportMonthYm}
+                    onChange={(e) => setExportMonthYm(e.target.value)}
+                    className="w-full rounded-md border border-[#2a2826] bg-[#0e0e0e] px-3 py-2 font-mono text-sm text-[#f0ede6] outline-none focus:border-[#c9964a]"
+                  >
+                    {monthMenuOptions().map((ym) => (
+                      <option key={ym} value={ym}>
+                        {formatMonthLongYear(ym)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode('month')}
+                    disabled={exporting}
+                    className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+                  >
+                    Preview month
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportMonth()}
+                    disabled={exporting}
+                    className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
+                  >
+                    {exporting ? 'Preparing…' : 'Export month XLSX'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            {error ? (
+              <p className="mt-4 font-mono text-xs text-[#c97b4a]">{error}</p>
+            ) : null}
+          </div>
         ) : null}
       </section>
 

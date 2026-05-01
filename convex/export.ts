@@ -9,7 +9,26 @@ import {
   buildExportSheetColumns,
 } from '../src/lib/exportLayout'
 import type { ExportEntryRow } from '../src/lib/exportLayout'
+import type { ExportColumnKey } from '../src/lib/prefs'
 import { userPrefsToExportLayout } from './userPreferences'
+
+function fitColumnWidths(
+  columns: Array<{ key: ExportColumnKey; header: string; width: number }>,
+  rows: Array<Record<string, string | number>>,
+): Record<ExportColumnKey, number> {
+  const out = {} as Record<ExportColumnKey, number>
+  for (const col of columns) {
+    let maxLen = col.header.length
+    for (const row of rows) {
+      const value = row[col.key]
+      const text = value === undefined || value === null ? '' : String(value)
+      maxLen = Math.max(maxLen, text.length)
+    }
+    // ExcelJS width is roughly in "characters"; clamp for readability.
+    out[col.key] = Math.min(60, Math.max(8, maxLen + 2))
+  }
+  return out
+}
 
 export const generateExport = action({
   args: {
@@ -90,6 +109,14 @@ export const generateExport = action({
       exportMonth,
     )
     const sheetColumns = buildExportSheetColumns(layout)
+    const exportRows = rawRows.map((r) => {
+      const row: Record<string, string | number> = {}
+      for (const key of layout.exportColumns) {
+        row[key] = r[key] ?? ''
+      }
+      return row
+    })
+    const widths = fitColumnWidths(sheetColumns, exportRows)
 
     const workbook = new ExcelJS.Workbook()
     workbook.creator = 'Sheeter'
@@ -99,23 +126,13 @@ export const generateExport = action({
     sheet.columns = sheetColumns.map((c) => ({
       header: c.header,
       key: c.key,
-      width: c.width,
+      width: widths[c.key],
     }))
 
     const headerRow = sheet.getRow(1)
-    headerRow.font = { bold: true, color: { argb: 'FFF0EDE6' } }
-    headerRow.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FF1A1A1A' },
-    }
-    headerRow.alignment = { vertical: 'middle' }
+    headerRow.font = { bold: true }
 
-    for (const r of rawRows) {
-      const row: Record<string, string | number> = {}
-      for (const key of layout.exportColumns) {
-        row[key] = r[key] ?? ''
-      }
+    for (const row of exportRows) {
       sheet.addRow(row)
     }
 
