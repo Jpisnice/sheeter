@@ -1,6 +1,6 @@
 import { formatHMM, parseHMM } from './time'
 import type { ExportColumnKey } from './prefs'
-import { getISOWeekMonday } from './weekUtils'
+import { getISOWeekMonday, getMonthWeekChunkForDate } from './weekUtils'
 
 export type WeekNoDisplayMode = 'iso' | 'monthOrdinal'
 export type WeekRangeDisplayMode =
@@ -56,11 +56,9 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0')
 }
 
-/** 7-day chunks from the 1st: 1–5 (plan default). */
+/** Month-clipped ISO chunks ordinal: 1..N within the date's calendar month. */
 export function monthWeekOrdinal(dateStr: string): number {
-  const d = Number(dateStr.slice(8, 10))
-  if (!Number.isFinite(d) || d < 1) return 1
-  return Math.min(5, Math.ceil(d / 7))
+  return getMonthWeekChunkForDate(dateStr).ordinal
 }
 
 /** Mon–Fri of ISO week as `DD/MM/YYYY - DD/MM/YYYY`. */

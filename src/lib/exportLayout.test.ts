@@ -38,11 +38,12 @@ const entry = (
 })
 
 describe('monthWeekOrdinal', () => {
-  it('chunks 7 days from day 1', () => {
-    expect(monthWeekOrdinal('2026-01-01')).toBe(1)
-    expect(monthWeekOrdinal('2026-01-07')).toBe(1)
-    expect(monthWeekOrdinal('2026-01-08')).toBe(2)
-    expect(monthWeekOrdinal('2026-01-31')).toBe(5)
+  it('uses month-clipped iso chunk ordinals', () => {
+    expect(monthWeekOrdinal('2026-04-01')).toBe(1)
+    expect(monthWeekOrdinal('2026-04-06')).toBe(2)
+    expect(monthWeekOrdinal('2026-04-30')).toBe(5)
+    expect(monthWeekOrdinal('2026-02-01')).toBe(1)
+    expect(monthWeekOrdinal('2026-02-02')).toBe(2)
   })
 })
 

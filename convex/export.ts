@@ -13,10 +13,12 @@ import { userPrefsToExportLayout } from './userPreferences'
 
 export const generateExport = action({
   args: {
-    mode: v.union(v.literal('week'), v.literal('month')),
+    mode: v.union(v.literal('week'), v.literal('month'), v.literal('range')),
     weekNo: v.optional(v.number()),
     year: v.optional(v.number()),
     month: v.optional(v.string()),
+    from: v.optional(v.string()),
+    to: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     let entries: ExportEntryRow[] = []
@@ -38,12 +40,32 @@ export const generateExport = action({
         tasks: e.tasks,
         totalHours: e.totalHours,
       }))
-    } else {
-      if (!args.month) {
+    } else if (args.mode === 'month') {
+      const month = args.month
+      if (!month) {
         throw new Error('month is required for month mode')
       }
       const rows = await ctx.runQuery(api.entries.getByMonth, {
-        month: args.month,
+        month,
+      })
+      entries = rows.map((e) => ({
+        date: e.date,
+        weekNo: e.weekNo,
+        year: e.year,
+        weekRange: e.weekRange,
+        month: e.month,
+        tasks: e.tasks,
+        totalHours: e.totalHours,
+      }))
+    } else {
+      const from = args.from
+      const to = args.to
+      if (!from || !to) {
+        throw new Error('from and to are required for range mode')
+      }
+      const rows = await ctx.runQuery(api.entries.getByDateRange, {
+        from,
+        to,
       })
       entries = rows.map((e) => ({
         date: e.date,

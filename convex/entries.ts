@@ -275,6 +275,20 @@ export const getByMonth = query({
   },
 })
 
+export const getByDateRange = query({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx)
+    const rows = await ctx.db
+      .query('entries')
+      .withIndex('by_userId_date', (q) =>
+        q.eq('userId', userId).gte('date', args.from).lte('date', args.to),
+      )
+      .collect()
+    return rows.sort((a, b) => a.date.localeCompare(b.date))
+  },
+})
+
 export const me = query({
   args: {},
   handler: async (ctx) => {

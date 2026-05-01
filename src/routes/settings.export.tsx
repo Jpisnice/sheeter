@@ -13,12 +13,19 @@ function SettingsExportPage() {
       <div className="min-h-screen">
         <TopBar />
         <main className="mx-auto max-w-3xl px-5 py-10">
-          <nav className="mb-8">
+          <nav className="mb-8 flex flex-wrap items-center gap-4">
             <Link
               to="/settings"
               className="font-mono text-xs text-[#8b8780] hover:text-[#c9964a]"
             >
               ← Settings
+            </Link>
+            <Link
+              to="/history"
+              hash="export"
+              className="font-mono text-xs text-[#8b8780] hover:text-[#c9964a]"
+            >
+              History — pick a month & preview →
             </Link>
           </nav>
           <ExportSettingsForm />

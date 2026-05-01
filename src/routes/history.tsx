@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createFileRoute, Link, useRouterState } from '@tanstack/react-router'
 import { useAction, useMutation, useQuery } from 'convex/react'
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import { api } from '../../convex/_generated/api'
@@ -11,13 +11,16 @@ import { ExportPreviewTable } from '../components/ExportPreviewTable'
 import { TaskEditor } from '../components/TaskEditor'
 import type { EditorSubmission } from '../components/TaskEditor'
 import {
+  formatChunkRange,
+  formatMonthLongYear,
   formatShortDate,
-  getISOWeek,
-  getISOWeekYear,
-  getWeekRange,
-  getWeekdayDates,
+  getMonthWeekChunkForDate,
+  monthMenuOptions,
+  stepMonthWeekChunk,
   isWeekendDate,
   monthString,
+  todayString,
+  type MonthWeekChunk,
 } from '../lib/weekUtils'
 import { DEFAULT_DAY_MAX_MINS, DEFAULT_DAY_MIN_MINS } from '../lib/prefs'
 
@@ -57,47 +60,40 @@ function HistoryPage() {
   )
 }
 
-function stepWeek(
-  weekNo: number,
-  year: number,
-  delta: number,
-): { weekNo: number; year: number } {
-  const jan4 = new Date(Date.UTC(year, 0, 4))
-  const jan4Day = jan4.getUTCDay() || 7
-  const monday = new Date(jan4)
-  monday.setUTCDate(jan4.getUTCDate() - (jan4Day - 1) + (weekNo - 1) * 7)
-  monday.setUTCDate(monday.getUTCDate() + delta * 7)
-  return { weekNo: isoWeekFromUTC(monday), year: isoYearFromUTC(monday) }
+function yyyymmFromChunk(chunk: MonthWeekChunk): string {
+  return `${chunk.year}-${String(chunk.monthIndex + 1).padStart(2, '0')}`
 }
 
-function isoWeekFromUTC(target: Date): number {
-  const t = new Date(target)
-  const dayNum = t.getUTCDay() || 7
-  t.setUTCDate(t.getUTCDate() + 4 - dayNum)
-  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
-  return Math.ceil(((t.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
-}
-
-function isoYearFromUTC(target: Date): number {
-  const t = new Date(target)
-  const dayNum = t.getUTCDay() || 7
-  t.setUTCDate(t.getUTCDate() + 4 - dayNum)
-  return t.getUTCFullYear()
+function enumerateDateRange(startDate: string, endDate: string): string[] {
+  const [sy, sm, sd] = startDate.split('-').map(Number)
+  const [ey, em, ed] = endDate.split('-').map(Number)
+  const start = new Date(Date.UTC(sy, sm - 1, sd))
+  const end = new Date(Date.UTC(ey, em - 1, ed))
+  const out: string[] = []
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(d.getUTCDate()).padStart(2, '0')
+    out.push(`${y}-${m}-${day}`)
+  }
+  return out
 }
 
 const WEEKEND_STORAGE_KEY = 'sheeter:showWeekend'
 
 function History() {
-  const [{ weekNo, year }, setWeek] = useState(() => ({
-    weekNo: getISOWeek(),
-    year: getISOWeekYear(),
-  }))
+  const [chunk, setChunk] = useState(() =>
+    getMonthWeekChunkForDate(todayString()),
+  )
   const [showWeekend, setShowWeekend] = useState<boolean>(false)
   const [openDate, setOpenDate] = useState<string | null>(null)
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<null | 'week' | 'month'>(null)
+  const [exportMonthYm, setExportMonthYm] = useState(() => monthString(0))
+  const exportSectionRef = useRef<HTMLElement>(null)
+  const locationHash = useRouterState({ select: (s) => s.location.hash })
 
   useEffect(() => {
     try {
@@ -107,6 +103,14 @@ function History() {
       /* ignore */
     }
   }, [])
+
+  useEffect(() => {
+    if (locationHash !== '#export' || !exportSectionRef.current) return
+    exportSectionRef.current.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }, [locationHash])
 
   const toggleWeekend = () => {
     setShowWeekend((prev) => {
@@ -120,19 +124,29 @@ function History() {
     })
   }
 
-  const entries = useQuery(api.entries.getByWeek, { weekNo, year })
+  const chunkMonth = yyyymmFromChunk(chunk)
+  const monthEntries = useQuery(api.entries.getByMonth, { month: chunkMonth })
   const prefs = useQuery(api.userPreferences.get)
   const generate = useAction(api.export.generateExport)
 
   const previewArgs =
     previewMode === 'week'
-      ? { mode: 'week' as const, weekNo, year }
+      ? {
+          mode: 'range' as const,
+          from: chunk.startDate,
+          to: chunk.endDate,
+        }
       : previewMode === 'month'
-        ? { mode: 'month' as const, month: monthString(0) }
+        ? { mode: 'month' as const, month: exportMonthYm }
         : ('skip' as const)
   const exportPreview = useQuery(api.exportPreview.preview, previewArgs)
-
-  const weekRange = getWeekRange(weekNo, year)
+  const entries = useMemo(
+    () =>
+      (monthEntries ?? []).filter(
+        (e) => e.date >= chunk.startDate && e.date <= chunk.endDate,
+      ),
+    [monthEntries, chunk.startDate, chunk.endDate],
+  )
   const byDate = useMemo(() => {
     const m = new Map<string, Doc<'entries'>>()
     for (const e of entries ?? []) m.set(e.date, e)
@@ -144,12 +158,14 @@ function History() {
     return false
   }, [entries])
 
-  const dayList = useMemo(
-    () => getWeekdayDates(weekNo, year, showWeekend || hasLoggedWeekend),
-    [weekNo, year, showWeekend, hasLoggedWeekend],
-  )
+  const dayList = useMemo(() => {
+    const dates = enumerateDateRange(chunk.startDate, chunk.endDate)
+    return showWeekend || hasLoggedWeekend
+      ? dates
+      : dates.filter((d) => !isWeekendDate(d))
+  }, [chunk.startDate, chunk.endDate, showWeekend, hasLoggedWeekend])
 
-  const weeklyTotal = useMemo(() => {
+  const periodTotal = useMemo(() => {
     if (!entries) return null
     let mins = 0
     for (const e of entries) {
@@ -179,14 +195,18 @@ function History() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const exportWeek = async () => {
+  const exportPeriod = async () => {
     setError(null)
     setExporting(true)
     try {
-      const b64 = await generate({ mode: 'week', weekNo, year })
+      const b64 = await generate({
+        mode: 'range',
+        from: chunk.startDate,
+        to: chunk.endDate,
+      })
       downloadBase64(
         b64,
-        `sheeter-${year}-W${weekNo.toString().padStart(2, '0')}.xlsx`,
+        `sheeter-${chunk.startDate}_to_${chunk.endDate}.xlsx`,
       )
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
@@ -199,8 +219,8 @@ function History() {
     setError(null)
     setExporting(true)
     try {
-      const b64 = await generate({ mode: 'month', month: monthString(0) })
-      downloadBase64(b64, `sheeter-${monthString(0)}.xlsx`)
+      const b64 = await generate({ mode: 'month', month: exportMonthYm })
+      downloadBase64(b64, `sheeter-${exportMonthYm}.xlsx`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed')
     } finally {
@@ -216,7 +236,7 @@ function History() {
           onClick={() => {
             setOpenDate(null)
             setEditingDate(null)
-            setWeek(stepWeek(weekNo, year, -1))
+            setChunk((prev) => stepMonthWeekChunk(prev, -1))
           }}
           className="rounded-md border border-[#2a2826] px-3 py-1.5 font-mono text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6]"
         >
@@ -224,16 +244,23 @@ function History() {
         </button>
         <div className="text-center">
           <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]">
-            Week {weekNo.toString().padStart(2, '0')} · {year}
+            {formatMonthLongYear(chunkMonth)} · Week {chunk.ordinal}/
+            {chunk.totalInMonth}
           </div>
-          <div className="mt-1 text-sm">{weekRange}</div>
+          <div className="mt-1 text-sm">
+            {formatChunkRange(chunk)} · {chunk.dayCount}{' '}
+            {chunk.dayCount === 1 ? 'day' : 'days'}
+            {chunk.isLeadingPartial || chunk.isTrailingPartial
+              ? ' · partial'
+              : ''}
+          </div>
         </div>
         <button
           type="button"
           onClick={() => {
             setOpenDate(null)
             setEditingDate(null)
-            setWeek(stepWeek(weekNo, year, 1))
+            setChunk((prev) => stepMonthWeekChunk(prev, 1))
           }}
           className="rounded-md border border-[#2a2826] px-3 py-1.5 font-mono text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6]"
         >
@@ -284,56 +311,119 @@ function History() {
 
       <div className="flex items-center justify-between rounded-lg border border-[#2a2826] bg-[#151515] px-4 py-3 text-xs">
         <span className="font-mono uppercase tracking-[0.2em] text-[#8b8780]">
-          Weekly total
+          Period total
         </span>
         <span className="font-mono text-sm text-[#c9964a]">
-          {weeklyTotal ?? '—'}
+          {periodTotal ?? '—'}
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setPreviewMode('week')}
-          disabled={!entries?.length}
-          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+      <section
+        ref={exportSectionRef}
+        id="export"
+        aria-labelledby="history-export-heading"
+        className="scroll-mt-6 rounded-lg border border-[#2a2826] bg-[#151515]/60 p-5"
+      >
+        <h2
+          id="history-export-heading"
+          className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]"
         >
-          Preview week
-        </button>
-        <button
-          type="button"
-          onClick={() => void exportWeek()}
-          disabled={exporting || !entries?.length}
-          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
-        >
-          {exporting ? 'Preparing…' : 'Export week XLSX'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setPreviewMode('month')}
-          disabled={exporting}
-          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
-        >
-          Preview month
-        </button>
-        <button
-          type="button"
-          onClick={() => void exportMonth()}
-          disabled={exporting}
-          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
-        >
-          Export this month XLSX
-        </button>
+          Export
+        </h2>
+        <p className="mt-2 max-w-prose text-xs leading-relaxed text-[#8b8780]">
+          Preview matches your saved layout from{' '}
+          <Link
+            to="/settings/export"
+            className="text-[#c9964a] underline decoration-[#2a2826] underline-offset-2 hover:decoration-[#c9964a]"
+          >
+            Settings → Export layout
+          </Link>
+          . Month exports use the calendar month you pick below.
+        </p>
+
+        <div className="mt-6 space-y-6">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
+              Current period
+            </div>
+            <p className="mt-1 text-xs text-[#8b8780]">
+              Exports exactly what is shown above ({chunk.startDate} to{' '}
+              {chunk.endDate}).
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPreviewMode('week')}
+                disabled={!entries?.length}
+                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+              >
+                Preview this period
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportPeriod()}
+                disabled={exporting || !entries?.length}
+                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
+              >
+                {exporting ? 'Preparing…' : 'Export this period XLSX'}
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t border-[#2a2826] pt-6">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-[#c9964a]/90">
+              Month
+            </div>
+            <p className="mt-1 text-xs text-[#8b8780]">
+              Choose any month (past or a few ahead), then preview or download.
+            </p>
+            <label className="mt-3 block max-w-xs">
+              <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-[#8b8780]">
+                Calendar month
+              </span>
+              <select
+                value={exportMonthYm}
+                onChange={(e) => setExportMonthYm(e.target.value)}
+                className="w-full rounded-md border border-[#2a2826] bg-[#0e0e0e] px-3 py-2 font-mono text-sm text-[#f0ede6] outline-none focus:border-[#c9964a]"
+              >
+                {monthMenuOptions().map((ym) => (
+                  <option key={ym} value={ym}>
+                    {formatMonthLongYear(ym)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPreviewMode('month')}
+                disabled={exporting}
+                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+              >
+                Preview month
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportMonth()}
+                disabled={exporting}
+                className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
+              >
+                {exporting ? 'Preparing…' : 'Export month XLSX'}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {error ? (
-          <span className="font-mono text-xs text-[#c97b4a]">{error}</span>
+          <p className="mt-4 font-mono text-xs text-[#c97b4a]">{error}</p>
         ) : null}
-      </div>
+      </section>
 
       {previewMode ? (
         <ExportPreviewDialog
           mode={previewMode}
-          weekLabel={`${year}-W${weekNo.toString().padStart(2, '0')}`}
-          monthLabel={monthString(0)}
+          weekLabel={`${formatChunkRange(chunk)} (${chunk.startDate} to ${chunk.endDate})`}
+          monthLabel={`${formatMonthLongYear(exportMonthYm)} (${exportMonthYm})`}
           preview={exportPreview}
           exporting={exporting}
           onClose={() => {
@@ -345,17 +435,21 @@ function History() {
             setExporting(true)
             try {
               if (previewMode === 'week') {
-                const b64 = await generate({ mode: 'week', weekNo, year })
+                const b64 = await generate({
+                  mode: 'range',
+                  from: chunk.startDate,
+                  to: chunk.endDate,
+                })
                 downloadBase64(
                   b64,
-                  `sheeter-${year}-W${weekNo.toString().padStart(2, '0')}.xlsx`,
+                  `sheeter-${chunk.startDate}_to_${chunk.endDate}.xlsx`,
                 )
               } else {
                 const b64 = await generate({
                   mode: 'month',
-                  month: monthString(0),
+                  month: exportMonthYm,
                 })
-                downloadBase64(b64, `sheeter-${monthString(0)}.xlsx`)
+                downloadBase64(b64, `sheeter-${exportMonthYm}.xlsx`)
               }
               setPreviewMode(null)
             } catch (e) {

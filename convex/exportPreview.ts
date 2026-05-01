@@ -13,10 +13,12 @@ import {
 
 export const preview = query({
   args: {
-    mode: v.union(v.literal('week'), v.literal('month')),
+    mode: v.union(v.literal('week'), v.literal('month'), v.literal('range')),
     weekNo: v.optional(v.number()),
     year: v.optional(v.number()),
     month: v.optional(v.string()),
+    from: v.optional(v.string()),
+    to: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx)
@@ -25,7 +27,9 @@ export const preview = query({
     let entries: ExportEntryRow[] = []
 
     if (args.mode === 'week') {
-      if (args.weekNo === undefined || args.year === undefined) {
+      const weekNo = args.weekNo
+      const year = args.year
+      if (weekNo === undefined || year === undefined) {
         throw new ConvexError('weekNo and year are required for week mode')
       }
       const rows = await ctx.db
@@ -33,8 +37,30 @@ export const preview = query({
         .withIndex('by_userId_week', (q) =>
           q
             .eq('userId', userId)
-            .eq('year', args.year!)
-            .eq('weekNo', args.weekNo!),
+            .eq('year', year)
+            .eq('weekNo', weekNo),
+        )
+        .collect()
+      entries = rows
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((e) => ({
+          date: e.date,
+          weekNo: e.weekNo,
+          year: e.year,
+          weekRange: e.weekRange,
+          month: e.month,
+          tasks: e.tasks,
+          totalHours: e.totalHours,
+        }))
+    } else if (args.mode === 'month') {
+      const month = args.month
+      if (!month) {
+        throw new ConvexError('month is required for month mode')
+      }
+      const rows = await ctx.db
+        .query('entries')
+        .withIndex('by_userId_month', (q) =>
+          q.eq('userId', userId).eq('month', month),
         )
         .collect()
       entries = rows
@@ -49,14 +75,15 @@ export const preview = query({
           totalHours: e.totalHours,
         }))
     } else {
-      const month = args.month
-      if (!month) {
-        throw new ConvexError('month is required for month mode')
+      const from = args.from
+      const to = args.to
+      if (!from || !to) {
+        throw new ConvexError('from and to are required for range mode')
       }
       const rows = await ctx.db
         .query('entries')
-        .withIndex('by_userId_month', (q) =>
-          q.eq('userId', userId).eq('month', month),
+        .withIndex('by_userId_date', (q) =>
+          q.eq('userId', userId).gte('date', from).lte('date', to),
         )
         .collect()
       entries = rows

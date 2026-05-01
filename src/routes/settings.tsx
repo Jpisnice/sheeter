@@ -126,6 +126,13 @@ function Settings() {
         >
           Export layout
         </Link>
+        <Link
+          to="/history"
+          hash="export"
+          className="rounded-md border border-[#2a2826] px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6]"
+        >
+          Export on History
+        </Link>
       </div>
 
       <div

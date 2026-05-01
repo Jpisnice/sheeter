@@ -59,10 +59,12 @@ The web app has a `/settings` route (linked from the top bar) with **Profile** a
 
 - **Profile** — signed-in user (name, email, initial) and sign-out.
 - **Work hours** — route `/settings/hours`: per-user **day total band** (defaults 7:30–8:00) for the dashboard, history editor, and Apple Shortcut `POST /log`.
-- **Export layout** — route `/settings/export`: Excel **columns** (order, optional header overrides), **row shape** (per task / per day / per week), **week number** display (ISO vs **month week 1–5**, where 1–5 = seven-day chunks from the 1st of each entry’s calendar month), and **week range** display (`Mar 17 – Mar 21` style, **EU slash Mon–Fri** for the ISO workweek, or **full calendar month** `01/mm/yyyy - last/mm/yyyy`). The export page includes a **live table preview** (your data for this ISO week or this month) that updates as you change options. Server-side preview for History uses the `exportPreview.preview` Convex query; Excel generation uses the same row logic in `src/lib/exportLayout.ts`.
+- **Export layout** — route `/settings/export`: Excel **columns** (order, optional header overrides), **row shape** (per task / per day / per week), **week number** display (ISO vs **month week ordinal**, where ordinals follow **month-clipped ISO chunks**: Mon–Sun chunks intersected with each calendar month, so first/last chunks can be partial), and **week range** display (`Mar 17 – Mar 21` style, **EU slash Mon–Fri** for the ISO workweek, or **full calendar month** `01/mm/yyyy - last/mm/yyyy`). The export page includes a **live table preview** (your data for this ISO week or this month) that updates as you change options. Server-side preview for History uses the `exportPreview.preview` Convex query; Excel generation uses the same row logic in `src/lib/exportLayout.ts`.
 - **Extras → Apple Shortcut access** — personal-access tokens for `POST /log`, endpoint URL, and `curl` smoke tests.
 
-On **History**, use **Preview week** / **Preview month** to open a dialog with the same table the XLSX will contain, then **Download XLSX** (or use the direct export buttons without preview).
+On **History**, navigation is **month-bound**: each page is one month-contained chunk (Mon–Sun intersected with the current month). When a week crosses a month edge, it is split into two pages and marked as partial. The **Export** section (anchor `#export`, linked from Settings) supports:
+- **Preview this period** / **Export this period XLSX** — uses a backend **range export** for exactly the visible dates (`from..to`), so files match what the page shows.
+- **Preview month** / **Export month XLSX** — pick any calendar month from the dropdown (defaults to this month), preview the exact table layout, then download.
 
 Tokens are per-user. Each signed-in user manages their own tokens — Sheeter is fully multi-tenant for Shortcut access.
 

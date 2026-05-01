@@ -17,6 +17,15 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0')
 }
 
+function toDateStringUTC(d: Date): string {
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
+}
+
+function parseDateStringUTC(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
 export function getISOWeek(date?: Date): number {
   const d = date ? new Date(date) : new Date()
   // Use UTC midnight copy to avoid DST issues
@@ -75,11 +84,116 @@ export function getWeekdayDates(
   for (let i = 0; i < count; i++) {
     const d = new Date(monday)
     d.setUTCDate(monday.getUTCDate() + i)
-    out.push(
-      `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`,
-    )
+    out.push(toDateStringUTC(d))
   }
   return out
+}
+
+export type MonthWeekChunk = {
+  year: number
+  monthIndex: number
+  ordinal: number
+  totalInMonth: number
+  startDate: string
+  endDate: string
+  dayCount: number
+  isLeadingPartial: boolean
+  isTrailingPartial: boolean
+  isoWeekNo: number
+  isoYear: number
+}
+
+/** Mon-Sun chunks clipped to a calendar month, in date order. */
+export function getMonthWeekChunks(
+  year: number,
+  monthIndex: number,
+): MonthWeekChunk[] {
+  const monthStart = new Date(Date.UTC(year, monthIndex, 1))
+  const monthEnd = new Date(Date.UTC(year, monthIndex + 1, 0))
+  const chunks: Array<{ start: Date; end: Date }> = []
+  let cursor = new Date(monthStart)
+
+  while (cursor <= monthEnd) {
+    const start = new Date(cursor)
+    const end = new Date(cursor)
+    while (end < monthEnd && end.getUTCDay() !== 0) {
+      end.setUTCDate(end.getUTCDate() + 1)
+    }
+    chunks.push({ start, end })
+    cursor = new Date(end)
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  const totalInMonth = chunks.length
+  return chunks.map(({ start, end }, idx) => {
+    const dayCount = Math.round(
+      (end.getTime() - start.getTime()) / 86400000,
+    ) + 1
+    const isoWeekNo = getISOWeek(start)
+    const isoYear = getISOWeekYear(start)
+    return {
+      year,
+      monthIndex,
+      ordinal: idx + 1,
+      totalInMonth,
+      startDate: toDateStringUTC(start),
+      endDate: toDateStringUTC(end),
+      dayCount,
+      isLeadingPartial: idx === 0 && start.getUTCDay() !== 1,
+      isTrailingPartial: idx === totalInMonth - 1 && end.getUTCDay() !== 0,
+      isoWeekNo,
+      isoYear,
+    }
+  })
+}
+
+export function getMonthWeekChunkForDate(dateStr: string): MonthWeekChunk {
+  const d = parseDateStringUTC(dateStr)
+  const chunks = getMonthWeekChunks(d.getUTCFullYear(), d.getUTCMonth())
+  const hit = chunks.find((c) => c.startDate <= dateStr && dateStr <= c.endDate)
+  return hit ?? chunks[0]!
+}
+
+export function stepMonthWeekChunk(
+  chunk: MonthWeekChunk,
+  delta: number,
+): MonthWeekChunk {
+  if (delta === 0) return chunk
+  const step = delta > 0 ? 1 : -1
+  let remaining = Math.abs(delta)
+  let current = chunk
+  while (remaining > 0) {
+    const nextOrdinal = current.ordinal + step
+    if (nextOrdinal >= 1 && nextOrdinal <= current.totalInMonth) {
+      const monthChunks = getMonthWeekChunks(current.year, current.monthIndex)
+      current = monthChunks[nextOrdinal - 1]!
+    } else {
+      const nextMonthStart = new Date(
+        Date.UTC(current.year, current.monthIndex + step, 1),
+      )
+      const monthChunks = getMonthWeekChunks(
+        nextMonthStart.getUTCFullYear(),
+        nextMonthStart.getUTCMonth(),
+      )
+      current = step > 0 ? monthChunks[0]! : monthChunks[monthChunks.length - 1]!
+    }
+    remaining--
+  }
+  return current
+}
+
+export function formatChunkRange(chunk: MonthWeekChunk): string {
+  const start = parseDateStringUTC(chunk.startDate)
+  const end = parseDateStringUTC(chunk.endDate)
+  const startWk = start.toLocaleDateString('en-US', {
+    weekday: 'short',
+    timeZone: 'UTC',
+  })
+  const endWk = end.toLocaleDateString('en-US', {
+    weekday: 'short',
+    timeZone: 'UTC',
+  })
+  return `${startWk} ${MONTH_ABBREV[start.getUTCMonth()]} ${start.getUTCDate()} – ${endWk} ${MONTH_ABBREV[end.getUTCMonth()]} ${end.getUTCDate()}`
 }
 
 // Returns true if the given "YYYY-MM-DD" date falls on Saturday or Sunday.
@@ -99,6 +213,30 @@ export function monthString(offset: number = 0): string {
   const d = new Date()
   const target = new Date(d.getFullYear(), d.getMonth() + offset, 1)
   return `${target.getFullYear()}-${pad2(target.getMonth() + 1)}`
+}
+
+/** e.g. "January 2026" for a `YYYY-MM` string (local calendar month). */
+export function formatMonthLongYear(ym: string): string {
+  const [y, m] = ym.split('-').map(Number)
+  if (!y || !m || m < 1 || m > 12) return ym
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+/** Consecutive `YYYY-MM` values for export/history month pickers. */
+export function monthMenuOptions(
+  pastMonths = 48,
+  futureMonths = 3,
+): string[] {
+  const d = new Date()
+  const out: string[] = []
+  for (let i = -pastMonths; i <= futureMonths; i++) {
+    const t = new Date(d.getFullYear(), d.getMonth() + i, 1)
+    out.push(`${t.getFullYear()}-${pad2(t.getMonth() + 1)}`)
+  }
+  return out
 }
 
 // Returns the full weekday name for a "YYYY-MM-DD" date string in local time.
