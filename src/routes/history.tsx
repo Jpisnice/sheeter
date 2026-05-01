@@ -7,6 +7,7 @@ import type { Doc } from '../../convex/_generated/dataModel'
 import { AuthGate } from '../components/AuthGate'
 import { TopBar } from '../components/TopBar'
 import { Dialog } from '../components/Dialog'
+import { ExportPreviewTable } from '../components/ExportPreviewTable'
 import { TaskEditor } from '../components/TaskEditor'
 import type { EditorSubmission } from '../components/TaskEditor'
 import {
@@ -18,6 +19,7 @@ import {
   isWeekendDate,
   monthString,
 } from '../lib/weekUtils'
+import { DEFAULT_DAY_MAX_MINS, DEFAULT_DAY_MIN_MINS } from '../lib/prefs'
 
 export const Route = createFileRoute('/history')({ component: HistoryPage })
 
@@ -95,6 +97,7 @@ function History() {
   const [editingDate, setEditingDate] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewMode, setPreviewMode] = useState<null | 'week' | 'month'>(null)
 
   useEffect(() => {
     try {
@@ -118,7 +121,16 @@ function History() {
   }
 
   const entries = useQuery(api.entries.getByWeek, { weekNo, year })
+  const prefs = useQuery(api.userPreferences.get)
   const generate = useAction(api.export.generateExport)
+
+  const previewArgs =
+    previewMode === 'week'
+      ? { mode: 'week' as const, weekNo, year }
+      : previewMode === 'month'
+        ? { mode: 'month' as const, month: monthString(0) }
+        : ('skip' as const)
+  const exportPreview = useQuery(api.exportPreview.preview, previewArgs)
 
   const weekRange = getWeekRange(weekNo, year)
   const byDate = useMemo(() => {
@@ -253,6 +265,8 @@ function History() {
             key={dateStr}
             dateStr={dateStr}
             entry={byDate.get(dateStr) ?? null}
+            dayMinMins={prefs?.dayMinMins ?? DEFAULT_DAY_MIN_MINS}
+            dayMaxMins={prefs?.dayMaxMins ?? DEFAULT_DAY_MAX_MINS}
             isOpen={openDate === dateStr}
             isEditing={editingDate === dateStr}
             onToggleOpen={() => {
@@ -277,7 +291,15 @@ function History() {
         </span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPreviewMode('week')}
+          disabled={!entries?.length}
+          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+        >
+          Preview week
+        </button>
         <button
           type="button"
           onClick={() => void exportWeek()}
@@ -285,6 +307,14 @@ function History() {
           className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#f0ede6] hover:border-[#c9964a] disabled:opacity-40"
         >
           {exporting ? 'Preparing…' : 'Export week XLSX'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setPreviewMode('month')}
+          disabled={exporting}
+          className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6] disabled:opacity-40"
+        >
+          Preview month
         </button>
         <button
           type="button"
@@ -298,6 +328,119 @@ function History() {
           <span className="font-mono text-xs text-[#c97b4a]">{error}</span>
         ) : null}
       </div>
+
+      {previewMode ? (
+        <ExportPreviewDialog
+          mode={previewMode}
+          weekLabel={`${year}-W${weekNo.toString().padStart(2, '0')}`}
+          monthLabel={monthString(0)}
+          preview={exportPreview}
+          exporting={exporting}
+          onClose={() => {
+            if (exporting) return
+            setPreviewMode(null)
+          }}
+          onDownload={async () => {
+            setError(null)
+            setExporting(true)
+            try {
+              if (previewMode === 'week') {
+                const b64 = await generate({ mode: 'week', weekNo, year })
+                downloadBase64(
+                  b64,
+                  `sheeter-${year}-W${weekNo.toString().padStart(2, '0')}.xlsx`,
+                )
+              } else {
+                const b64 = await generate({
+                  mode: 'month',
+                  month: monthString(0),
+                })
+                downloadBase64(b64, `sheeter-${monthString(0)}.xlsx`)
+              }
+              setPreviewMode(null)
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Export failed')
+            } finally {
+              setExporting(false)
+            }
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ExportPreviewDialog({
+  mode,
+  weekLabel,
+  monthLabel,
+  preview,
+  exporting,
+  onClose,
+  onDownload,
+}: {
+  mode: 'week' | 'month'
+  weekLabel: string
+  monthLabel: string
+  preview:
+    | { columns: Array<{ key: string; header: string; width: number }>; rows: Array<Record<string, string>> }
+    | undefined
+  exporting: boolean
+  onClose: () => void
+  onDownload: () => Promise<void>
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !exporting) onClose()
+      }}
+    >
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-[#2a2826] bg-[#151515] p-5 shadow-2xl">
+        <h3 className="text-sm font-medium text-[#f0ede6]">
+          Export preview — {mode === 'week' ? weekLabel : monthLabel}
+        </h3>
+        <p className="mt-1 text-xs text-[#8b8780]">
+          Matches your saved export settings. Download when it looks right.
+        </p>
+        <div className="mt-4">
+          {preview === undefined ? (
+            <p className="font-mono text-xs text-[#8b8780]">Loading…</p>
+          ) : preview.rows.length === 0 ? (
+            <p className="font-mono text-xs text-[#8b8780]">
+              No rows for this range.
+            </p>
+          ) : (
+            <ExportPreviewTable
+              columns={preview.columns}
+              rows={preview.rows}
+              footer="Same layout as the generated .xlsx file."
+            />
+          )}
+        </div>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={onClose}
+            className="rounded-md border border-[#2a2826] px-3 py-2 text-xs text-[#8b8780] hover:text-[#f0ede6] disabled:opacity-40"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            disabled={
+              exporting || preview === undefined || preview.rows.length === 0
+            }
+            onClick={() => void onDownload()}
+            className="rounded-md bg-[#c9964a] px-3 py-2 text-xs font-medium text-[#0e0e0e] hover:bg-[#d7a35a] disabled:opacity-40"
+          >
+            {exporting ? 'Preparing…' : 'Download XLSX'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -305,6 +448,8 @@ function History() {
 function DayRow({
   dateStr,
   entry,
+  dayMinMins,
+  dayMaxMins,
   isOpen,
   isEditing,
   onToggleOpen,
@@ -313,6 +458,8 @@ function DayRow({
 }: {
   dateStr: string
   entry: Doc<'entries'> | null
+  dayMinMins: number
+  dayMaxMins: number
   isOpen: boolean
   isEditing: boolean
   onToggleOpen: () => void
@@ -363,7 +510,11 @@ function DayRow({
           type="button"
           onClick={onToggleOpen}
           className="flex min-w-0 flex-1 items-center gap-3 text-left"
-          title={entry ? entry.tasks.map((t) => t.label).join(TASK_SEPARATOR) : undefined}
+          title={
+            entry
+              ? entry.tasks.map((t) => t.label).join(TASK_SEPARATOR)
+              : undefined
+          }
         >
           <span className="shrink-0 text-[#4a4741]">
             {isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -446,6 +597,8 @@ function DayRow({
             initialTasks={initialTasks}
             isBusy={busy}
             primaryLabel={entry ? 'Save changes' : 'Log day'}
+            dayMinMins={dayMinMins}
+            dayMaxMins={dayMaxMins}
             onSubmit={handleSave}
             onCancel={onFinishEdit}
             onDelete={entry ? performDelete : undefined}

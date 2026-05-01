@@ -17,10 +17,7 @@ export function TopBar() {
   return (
     <header className="border-b border-[#2a2826] bg-[#0e0e0e]/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5">
-        <Link
-          to="/dashboard"
-          className="text-[#f0ede6] hover:text-[#c9964a]"
-        >
+        <Link to="/dashboard" className="text-[#f0ede6] hover:text-[#c9964a]">
           <Logo markClassName="h-7 w-7 rounded-md" />
         </Link>
         <nav className="flex items-center gap-5 text-sm">

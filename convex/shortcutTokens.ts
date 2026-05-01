@@ -1,10 +1,6 @@
 import { ConvexError, v } from 'convex/values'
 import { getAuthUserId } from '@convex-dev/auth/server'
-import {
-  internalQuery,
-  mutation,
-  query,
-} from './_generated/server'
+import { internalQuery, mutation, query } from './_generated/server'
 import { rateLimiter } from './rateLimiter'
 
 const TOKEN_PREFIX = 'sk_'

@@ -2,11 +2,7 @@ import { ConvexError, v } from 'convex/values'
 import { getAuthUserId } from '@convex-dev/auth/server'
 import type { Id } from './_generated/dataModel'
 import type { MutationCtx, QueryCtx } from './_generated/server'
-import {
-  internalMutation,
-  mutation,
-  query,
-} from './_generated/server'
+import { internalMutation, mutation, query } from './_generated/server'
 import {
   formatHMM,
   noisySplit,
@@ -21,12 +17,11 @@ import {
   getWeekRange,
   todayString,
 } from '../src/lib/weekUtils'
+import { getDayBoundsForUser } from './userPreferences'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-type InputTaskValidator =
-  | string
-  | { label: string; hours?: string | undefined }
+type InputTaskValidator = string | { label: string; hours?: string | undefined }
 
 type ResolvedTask = { label: string; hours: string }
 
@@ -38,10 +33,12 @@ const inputTaskValidator = v.union(
   }),
 )
 
-const DAY_MIN = 450
-const DAY_MAX = 480
-
-function resolveHours(tasks: Array<InputTaskValidator>): Array<ResolvedTask> {
+export function resolveHours(
+  tasks: Array<InputTaskValidator>,
+  bounds: { dayMinMins: number; dayMaxMins: number },
+): Array<ResolvedTask> {
+  const DAY_MIN = bounds.dayMinMins
+  const DAY_MAX = bounds.dayMaxMins
   if (tasks.length < 1 || tasks.length > 3) {
     throw new ConvexError('Tasks must be between 1 and 3')
   }
@@ -90,7 +87,7 @@ function resolveHours(tasks: Array<InputTaskValidator>): Array<ResolvedTask> {
     const totalMins = normalized.reduce((s, n) => s + (n.mins ?? 0), 0)
     if (totalMins < DAY_MIN || totalMins > DAY_MAX) {
       throw new ConvexError(
-        `Total hours must be between 7:30 and 8:00. Got ${formatHMM(totalMins)}.`,
+        `Total hours must be between ${formatHMM(DAY_MIN)} and ${formatHMM(DAY_MAX)}. Got ${formatHMM(totalMins)}.`,
       )
     }
     return normalized.map((n) => ({
@@ -146,9 +143,7 @@ async function upsertEntry(
 
   const existing = await ctx.db
     .query('entries')
-    .withIndex('by_userId_date', (q) =>
-      q.eq('userId', userId).eq('date', date),
-    )
+    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
     .unique()
 
   const payload = {
@@ -180,7 +175,8 @@ export const logEntry = mutation({
     const userId = await getAuthUserId(ctx)
     if (!userId) throw new ConvexError('Not authenticated')
 
-    const resolved = resolveHours(args.tasks)
+    const bounds = await getDayBoundsForUser(ctx, userId)
+    const resolved = resolveHours(args.tasks, bounds)
     return upsertEntry(ctx, userId, args.date ?? todayString(), resolved, 'web')
   },
 })
@@ -216,7 +212,8 @@ export const logEntryFromShortcut = internalMutation({
       throw new ConvexError('Token was revoked')
     }
 
-    const resolved = resolveHours(args.tasks)
+    const bounds = await getDayBoundsForUser(ctx, args.userId)
+    const resolved = resolveHours(args.tasks, bounds)
     const result = await upsertEntry(
       ctx,
       args.userId,

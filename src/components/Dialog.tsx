@@ -64,7 +64,10 @@ export function Dialog({
       <div className="w-full max-w-sm rounded-lg border border-[#2a2826] bg-[#151515] p-5 shadow-2xl">
         <div className="mb-2 flex items-start gap-2.5">
           {showIcon ? (
-            <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${iconClass}`} />
+            <AlertTriangle
+              size={16}
+              className={`mt-0.5 shrink-0 ${iconClass}`}
+            />
           ) : null}
           <h3 className="text-sm font-medium text-[#f0ede6]">{title}</h3>
         </div>

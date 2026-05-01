@@ -1,4 +1,4 @@
-Welcome to your new TanStack Start app! 
+Welcome to your new TanStack Start app!
 
 # Getting Started
 
@@ -40,7 +40,6 @@ If you prefer not to use Tailwind CSS:
 
 ## Linting & Formatting
 
-
 This project uses [eslint](https://eslint.org/) and [prettier](https://prettier.io/) for linting and formatting. Eslint is configured using [tanstack/eslint-config](https://tanstack.com/config/latest/docs/eslint). The following scripts are available:
 
 ```bash
@@ -49,20 +48,21 @@ npm run format
 npm run check
 ```
 
-
 ## Setting up Convex
 
 - Set the `VITE_CONVEX_URL` and `CONVEX_DEPLOYMENT` environment variables in your `.env.local`. (Or run `npx -y convex init` to set them automatically.)
 - Run `npx -y convex dev` to start the Convex server.
 
-
-
 ## Settings page
 
-The web app has a `/settings` route (linked from the top bar) with two sections:
+The web app has a `/settings` route (linked from the top bar) with **Profile** and **Extras** tabs, plus shortcuts to two dedicated preference pages:
 
-- **Profile** — shows the signed-in user (name, email, initial) and a sign-out button.
-- **Extras → Apple Shortcut access** — create, list, and revoke personal-access tokens used by the `/log` HTTP endpoint, view the endpoint URL, and copy a ready-made `curl` smoke-test.
+- **Profile** — signed-in user (name, email, initial) and sign-out.
+- **Work hours** — route `/settings/hours`: per-user **day total band** (defaults 7:30–8:00) for the dashboard, history editor, and Apple Shortcut `POST /log`.
+- **Export layout** — route `/settings/export`: Excel **columns** (order, optional header overrides), **row shape** (per task / per day / per week), **week number** display (ISO vs **month week 1–5**, where 1–5 = seven-day chunks from the 1st of each entry’s calendar month), and **week range** display (`Mar 17 – Mar 21` style, **EU slash Mon–Fri** for the ISO workweek, or **full calendar month** `01/mm/yyyy - last/mm/yyyy`). The export page includes a **live table preview** (your data for this ISO week or this month) that updates as you change options. Server-side preview for History uses the `exportPreview.preview` Convex query; Excel generation uses the same row logic in `src/lib/exportLayout.ts`.
+- **Extras → Apple Shortcut access** — personal-access tokens for `POST /log`, endpoint URL, and `curl` smoke tests.
+
+On **History**, use **Preview week** / **Preview month** to open a dialog with the same table the XLSX will contain, then **Download XLSX** (or use the direct export buttons without preview).
 
 Tokens are per-user. Each signed-in user manages their own tokens — Sheeter is fully multi-tenant for Shortcut access.
 
@@ -97,11 +97,11 @@ Where each `<task>` is either:
 - a plain string — `"Refactored auth middleware"` (hours auto-computed), or
 - an object — `{ "label": "Code review", "hours": "1:30" }` (hours locked).
 
-Rules (enforced server-side in `resolveHours`):
+Rules (enforced server-side in `resolveHours`, using each user’s band from **Settings → Work hours**, default **7:30**–**8:00**):
 
 - 1 to 3 tasks per call.
-- If all tasks omit `hours`, the total is randomized between **7:30** and **8:00** and split across tasks.
-- If all tasks set `hours`, the total must itself be between **7:30** and **8:00**.
+- If all tasks omit `hours`, the total is randomized between the user’s **minimum** and **maximum** day total and split across tasks.
+- If all tasks set `hours`, the total must fall in that same band.
 - Mixed is allowed — locked hours are preserved, unlocked tasks fill the remainder.
 - Each resolved task is at least **15 minutes**, snapped to 15-minute increments.
 - The entry is written for **today** (server time) for the user that owns the token.
@@ -131,20 +131,25 @@ The site URL is `VITE_CONVEX_SITE_URL` in `.env.local` (e.g. `https://patient-di
 
 Open the **Shortcuts** app → tap **+** to create a new shortcut, then add actions in this order:
 
-1. **Ask for Input** — Prompt: `Task 1`, Input Type: *Text*. Rename the magic variable to `Task1`.
-2. **Ask for Input** — Prompt: `Task 2 (leave blank to skip)`, Input Type: *Text*. Rename to `Task2`.
-3. **Ask for Input** — Prompt: `Task 3 (leave blank to skip)`, Input Type: *Text*. Rename to `Task3`.
+1. **Ask for Input** — Prompt: `Task 1`, Input Type: _Text_. Rename the magic variable to `Task1`.
+2. **Ask for Input** — Prompt: `Task 2 (leave blank to skip)`, Input Type: _Text_. Rename to `Task2`.
+3. **Ask for Input** — Prompt: `Task 3 (leave blank to skip)`, Input Type: _Text_. Rename to `Task3`.
 4. **Text** — content:
+
    ```
    {"tasks":[TASKS_PLACEHOLDER]}
    ```
+
    You'll build `TASKS_PLACEHOLDER` with an **If** chain below. The simplest robust approach: use three **If** actions that each append `"Task1"`, `,"Task2"`, `,"Task3"` to a variable when non-empty, then wrap the joined string in `{"tasks":[ … ]}`.
 
    If you want to skip the branching, use this single **Text** action instead and always provide 1–3 non-empty inputs:
+
    ```
    {"tasks":["Task1","Task2","Task3"]}
    ```
+
    (Drag the `Task1` / `Task2` / `Task3` variables into the quoted slots.)
+
 5. **Get Contents of URL**:
    - URL: `https://<your-deployment>.convex.site/log`
    - Method: `POST`
@@ -152,32 +157,34 @@ Open the **Shortcuts** app → tap **+** to create a new shortcut, then add acti
      - `content-type` → `application/json`
      - `x-shortcut-token` → the `sk_…` token you copied from Settings.
    - Request Body: **File** → choose the **Text** from step 4.
-6. **Get Dictionary Value** — Key: `totalHours`, Dictionary: *Contents of URL*.
+6. **Get Dictionary Value** — Key: `totalHours`, Dictionary: _Contents of URL_.
 7. **Show Notification** — Title: `Sheeter`, Body: `Logged [Dictionary Value]`.
 
-Save the shortcut as **Log today**. Tap the share icon → **Add to Home Screen** for a one-tap icon, or enable **Use with Siri** to say *"Hey Siri, log today"*.
+Save the shortcut as **Log today**. Tap the share icon → **Add to Home Screen** for a one-tap icon, or enable **Use with Siri** to say _"Hey Siri, log today"_.
 
 ### 3. Ready-made variants
 
 **A. Fixed daily routine (zero prompts, one tap).** Replace step 4's Text body with:
 
 ```json
-{"tasks":["Deep work","Code review","Meetings"]}
+{ "tasks": ["Deep work", "Code review", "Meetings"] }
 ```
 
-Remove the three **Ask for Input** actions. Hours will be auto-split between 7:30 and 8:00.
+Remove the three **Ask for Input** actions. Hours will be auto-split within your **Work hours** day band (default 7:30–8:00).
 
 **B. Locked hours.** To pin specific durations, use object form:
 
 ```json
-{"tasks":[
-  {"label":"Deep work","hours":"4:00"},
-  {"label":"Code review","hours":"1:30"},
-  {"label":"Meetings","hours":"2:15"}
-]}
+{
+  "tasks": [
+    { "label": "Deep work", "hours": "4:00" },
+    { "label": "Code review", "hours": "1:30" },
+    { "label": "Meetings", "hours": "2:15" }
+  ]
+}
 ```
 
-Total must be between `7:30` and `8:00`.
+Total must fall within your configured day band (default `7:30`–`8:00`).
 
 **C. Dictation via Siri.** Replace the first **Ask for Input** with **Dictate Text** so you can say the task name instead of typing it.
 
@@ -216,25 +223,25 @@ curl.exe --% -X POST "https://<your-deployment>.convex.site/log" -H "content-typ
 
 Expected in all cases: `200` with an `ok: true` payload. Common failures:
 
-| Status | Cause |
-| ------ | ----- |
-| `401 Unauthorized` | Missing `x-shortcut-token` header, or the token isn't in the `shortcutTokens` table (maybe revoked or mistyped). |
-| `429 Rate limit exceeded` | You hit a bucket. Response includes a `retry-after` header (seconds) and a `scope` field (`"global"` or `"token"`). See [Rate limits](#5-rate-limits). |
-| `400 Invalid JSON body` | Body wasn't valid JSON. On Windows this almost always means `curl.exe` in PowerShell stripped your quotes — switch to `Invoke-RestMethod`. |
-| `400 tasks array required` | Body is missing `tasks` or it isn't a JSON array. |
-| `400 Tasks must be between 1 and 3` | Sent 0 or 4+ tasks. |
-| `400 Total hours must be between 7:30 and 8:00` | All tasks had `hours` but sum is outside the daily range. |
-| `400 Token was revoked` | The token row was deleted between lookup and write (extremely rare — just create a new one). |
+| Status                                          | Cause                                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `401 Unauthorized`                              | Missing `x-shortcut-token` header, or the token isn't in the `shortcutTokens` table (maybe revoked or mistyped).                                       |
+| `429 Rate limit exceeded`                       | You hit a bucket. Response includes a `retry-after` header (seconds) and a `scope` field (`"global"` or `"token"`). See [Rate limits](#5-rate-limits). |
+| `400 Invalid JSON body`                         | Body wasn't valid JSON. On Windows this almost always means `curl.exe` in PowerShell stripped your quotes — switch to `Invoke-RestMethod`.             |
+| `400 tasks array required`                      | Body is missing `tasks` or it isn't a JSON array.                                                                                                      |
+| `400 Tasks must be between 1 and 3`             | Sent 0 or 4+ tasks.                                                                                                                                    |
+| `400 Total hours must be between …`             | All tasks had `hours` but sum is outside your **Work hours** min–max (message includes the exact band).                                                |
+| `400 Token was revoked`                         | The token row was deleted between lookup and write (extremely rare — just create a new one).                                                           |
 
 ### 5. Rate limits
 
 All abuse-facing write paths go through the [`@convex-dev/rate-limiter`](https://www.convex.dev/components/rate-limiter) component. Limits are declared in one place (`convex/rateLimiter.ts`) so they're easy to audit or tune:
 
-| Bucket | Kind | Limit | Scope | Applies to |
-| ------ | ---- | ----- | ----- | ---------- |
-| `logGlobal` | fixed window | 600 / minute | entire deployment | pre-auth guard on `POST /log` so a scanner can't burn a deployment's compute before we even hash a token |
-| `logPerToken` | token bucket | 30 / minute, burst 10 | per `shortcutTokens` row | lets a shortcut retry a few times in a row, but caps a leaked token at ~30 writes/minute |
-| `createToken` | fixed window | 5 / hour | per user | combined with the hard 10-token-per-user cap, prevents churning tokens to defeat the cap |
+| Bucket        | Kind         | Limit                 | Scope                    | Applies to                                                                                               |
+| ------------- | ------------ | --------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `logGlobal`   | fixed window | 600 / minute          | entire deployment        | pre-auth guard on `POST /log` so a scanner can't burn a deployment's compute before we even hash a token |
+| `logPerToken` | token bucket | 30 / minute, burst 10 | per `shortcutTokens` row | lets a shortcut retry a few times in a row, but caps a leaked token at ~30 writes/minute                 |
+| `createToken` | fixed window | 5 / hour              | per user                 | combined with the hard 10-token-per-user cap, prevents churning tokens to defeat the cap                 |
 
 Behavior:
 
@@ -251,8 +258,6 @@ To change a limit, edit `convex/rateLimiter.ts` and redeploy — no schema migra
 - To rotate: revoke the old row in Settings, create a new token, update your Shortcut's header.
 - The endpoint only supports **today's** date by design; historical edits stay gated behind the logged-in web app.
 - Rate limits above give defense-in-depth: a leaked token is capped, and burst/DDoS attempts return 429 before touching the DB.
-
-
 
 ## Routing
 
@@ -271,7 +276,7 @@ Now that you have two routes you can use a `Link` component to navigate between 
 To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
 
 ```tsx
-import { Link } from "@tanstack/react-router";
+import { Link } from '@tanstack/react-router'
 ```
 
 Then anywhere in your JSX you can use it like so:
@@ -339,11 +344,11 @@ const getServerTime = createServerFn({
 // Use in a component
 function MyComponent() {
   const [time, setTime] = useState('')
-  
+
   useEffect(() => {
     getServerTime().then(setTime)
   }, [])
-  
+
   return <div>Server time: {time}</div>
 }
 ```

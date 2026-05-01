@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useRouter,
+  useRouterState,
+} from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { Check, Copy, KeyRound, Plus, Trash2, User } from 'lucide-react'
@@ -12,6 +18,17 @@ import { Dialog } from '../components/Dialog'
 export const Route = createFileRoute('/settings')({ component: SettingsPage })
 
 function SettingsPage() {
+  const path = useRouterState({ select: (s) => s.location.pathname })
+  const isChildPath = path.startsWith('/settings/') && path !== '/settings'
+
+  if (isChildPath) {
+    return (
+      <AuthGate>
+        <Outlet />
+      </AuthGate>
+    )
+  }
+
   return (
     <AuthGate>
       <div className="min-h-screen">
@@ -49,6 +66,7 @@ const TABS: ReadonlyArray<{
 
 function parseTabFromHash(hash: string): TabId | null {
   const clean = hash.replace(/^#/, '')
+  if (clean === 'preferences') return 'profile'
   return clean === 'profile' || clean === 'extras' ? clean : null
 }
 
@@ -93,6 +111,21 @@ function Settings() {
         <p className="mt-1 max-w-prose text-xs leading-relaxed text-[#8b8780]">
           {active.description}
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3 rounded-lg border border-[#2a2826] bg-[#151515]/50 p-4">
+        <Link
+          to="/settings/hours"
+          className="rounded-md border border-[#2a2826] px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6]"
+        >
+          Work hours
+        </Link>
+        <Link
+          to="/settings/export"
+          className="rounded-md border border-[#2a2826] px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-[#8b8780] hover:border-[#c9964a] hover:text-[#f0ede6]"
+        >
+          Export layout
+        </Link>
       </div>
 
       <div
@@ -200,7 +233,9 @@ function ExtrasSection() {
 function ShortcutEndpointCard() {
   const siteUrl =
     (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined) ?? ''
-  const endpoint = siteUrl ? `${siteUrl}/log` : 'https://<your-deployment>.convex.site/log'
+  const endpoint = siteUrl
+    ? `${siteUrl}/log`
+    : 'https://<your-deployment>.convex.site/log'
 
   return (
     <div className="rounded-lg border border-[#2a2826] bg-[#151515]/60 p-4">
@@ -216,13 +251,13 @@ function ShortcutEndpointCard() {
       <div className="mt-3 text-[11px] leading-relaxed text-[#8b8780]">
         Send <code className="font-mono text-[#f0ede6]">x-shortcut-token</code>{' '}
         and a JSON body{' '}
-        <code className="font-mono text-[#f0ede6]">{'{"tasks":[…]}'}</code>{' '}
-        with 1–3 items. Each task is either a plain string (hours
-        auto-computed) or{' '}
+        <code className="font-mono text-[#f0ede6]">{'{"tasks":[…]}'}</code> with
+        1–3 items. Each task is either a plain string (hours auto-computed) or{' '}
         <code className="font-mono text-[#f0ede6]">
           {'{"label":"…","hours":"H:MM"}'}
         </code>
-        . Total must fall between 7:30 and 8:00.
+        . Total must fall within your day range (see{' '}
+        <span className="text-[#f0ede6]">Work hours</span>).
       </div>
       <div className="mt-2 text-[11px] leading-relaxed text-[#6d6b67]">
         <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#8b8780]">
@@ -308,8 +343,7 @@ function ShortcutTokens() {
                 <div className="min-w-0 flex-1 pr-3">
                   <div className="truncate text-[#f0ede6]">{tok.label}</div>
                   <div className="font-mono text-[10px] text-[#8b8780]">
-                    sk_…{tok.lastFour} · created{' '}
-                    {formatDate(tok.createdAt)}
+                    sk_…{tok.lastFour} · created {formatDate(tok.createdAt)}
                     {tok.lastUsedAt
                       ? ` · used ${formatDate(tok.lastUsedAt)}`
                       : ' · never used'}
@@ -361,10 +395,7 @@ function ShortcutTokens() {
         ) : null}
       </div>
 
-      <TokenRevealDialog
-        value={newToken}
-        onClose={() => setNewToken(null)}
-      />
+      <TokenRevealDialog value={newToken} onClose={() => setNewToken(null)} />
       <Dialog
         open={!!pendingRevoke}
         variant="destructive"
@@ -415,8 +446,9 @@ function TokenRevealDialog({
           Token created — copy it now
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-[#8b8780]">
-          This is the only time <span className="text-[#f0ede6]">{value.label}</span>’s
-          token will be shown. Paste it into the{' '}
+          This is the only time{' '}
+          <span className="text-[#f0ede6]">{value.label}</span>’s token will be
+          shown. Paste it into the{' '}
           <code className="font-mono text-[#f0ede6]">x-shortcut-token</code>{' '}
           header in your Shortcut, then close this dialog.
         </p>
@@ -503,9 +535,7 @@ function ShortcutRecipeCard() {
         </li>
         <li>
           URL:{' '}
-          <code className="break-all font-mono text-[#f0ede6]">
-            {endpoint}
-          </code>
+          <code className="break-all font-mono text-[#f0ede6]">{endpoint}</code>
           . Method: <span className="text-[#f0ede6]">POST</span>.
         </li>
         <li>
@@ -518,37 +548,43 @@ function ShortcutRecipeCard() {
         <li>
           Request Body (JSON):{' '}
           <code className="font-mono text-[#f0ede6]">{bodyJson}</code>. Each
-          task is either a bare string (hours auto-split between 7:30 and
-          8:00) or an object{' '}
+          task is either a bare string (hours auto-split within your Work hours
+          day range) or an object{' '}
           <code className="font-mono text-[#f0ede6]">
             {'{"label":"…","hours":"2:30"}'}
           </code>
           . 1–3 tasks per call.
         </li>
         <li>
-          Save as <span className="text-[#f0ede6]">Log today</span>, add to
-          Home Screen, or enable Siri.
+          Save as <span className="text-[#f0ede6]">Log today</span>, add to Home
+          Screen, or enable Siri.
         </li>
       </ol>
 
       <div className="mt-4 space-y-3">
-        <CodeSnippet label="Smoke test — bash / zsh (macOS, Linux, WSL)" value={bashCurl} />
-        <CodeSnippet label="Smoke test — PowerShell (Windows)" value={pwshCurl} />
+        <CodeSnippet
+          label="Smoke test — bash / zsh (macOS, Linux, WSL)"
+          value={bashCurl}
+        />
+        <CodeSnippet
+          label="Smoke test — PowerShell (Windows)"
+          value={pwshCurl}
+        />
         <p className="font-mono text-[10px] leading-relaxed text-[#6d6b67]">
-          Replace{' '}
-          <code className="text-[#8b8780]">{tokenPlaceholder}</code> with a
-          token from the list above. Expect{' '}
+          Replace <code className="text-[#8b8780]">{tokenPlaceholder}</code>{' '}
+          with a token from the list above. Expect{' '}
           <code className="text-[#8b8780]">200</code> +{' '}
           <code className="text-[#8b8780]">{'{"ok":true,…}'}</code>.{' '}
           <code className="text-[#8b8780]">401</code> = token missing or
-          revoked.{' '}
-          <code className="text-[#8b8780]">429</code> = rate-limited — the{' '}
-          <code className="text-[#8b8780]">retry-after</code> header tells
+          revoked. <code className="text-[#8b8780]">429</code> = rate-limited —
+          the <code className="text-[#8b8780]">retry-after</code> header tells
           you how many seconds to wait.{' '}
           <code className="text-[#8b8780]">400</code> +{' '}
-          <code className="text-[#8b8780]">{'{"error":"Invalid JSON body"}'}</code>{' '}
-          usually means your shell mangled the body quotes — on Windows use
-          the PowerShell snippet (it avoids{' '}
+          <code className="text-[#8b8780]">
+            {'{"error":"Invalid JSON body"}'}
+          </code>{' '}
+          usually means your shell mangled the body quotes — on Windows use the
+          PowerShell snippet (it avoids{' '}
           <code className="text-[#8b8780]">curl.exe</code> because PowerShell
           strips embedded quotes when calling native exes).
         </p>

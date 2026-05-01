@@ -61,10 +61,9 @@ http.route({
     }
 
     const tokenHash = await sha256Hex(token)
-    const match = await ctx.runQuery(
-      internal.shortcutTokens.findByHash,
-      { tokenHash },
-    )
+    const match = await ctx.runQuery(internal.shortcutTokens.findByHash, {
+      tokenHash,
+    })
     if (!match) {
       return jsonResponse({ error: 'Unauthorized' }, 401)
     }

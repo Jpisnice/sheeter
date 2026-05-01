@@ -20,9 +20,7 @@ function pad2(n: number): string {
 export function getISOWeek(date?: Date): number {
   const d = date ? new Date(date) : new Date()
   // Use UTC midnight copy to avoid DST issues
-  const target = new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()),
-  )
+  const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   const dayNum = target.getUTCDay() || 7
   target.setUTCDate(target.getUTCDate() + 4 - dayNum)
   const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
@@ -36,16 +34,14 @@ export function getISOWeek(date?: Date): number {
 // the calendar year near year boundaries).
 export function getISOWeekYear(date?: Date): number {
   const d = date ? new Date(date) : new Date()
-  const target = new Date(
-    Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()),
-  )
+  const target = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
   const dayNum = target.getUTCDay() || 7
   target.setUTCDate(target.getUTCDate() + 4 - dayNum)
   return target.getUTCFullYear()
 }
 
-// Get the Date (in UTC) of the Monday of ISO week `weekNo` in `year`.
-function getISOWeekMonday(weekNo: number, year: number): Date {
+/** Monday (UTC) of ISO week `weekNo` in ISO week-year `year`. */
+export function getISOWeekMonday(weekNo: number, year: number): Date {
   // Jan 4 is always in ISO week 1
   const jan4 = new Date(Date.UTC(year, 0, 4))
   const jan4Day = jan4.getUTCDay() || 7

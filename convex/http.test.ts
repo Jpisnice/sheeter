@@ -333,4 +333,3 @@ describe('POST /log (Apple Shortcuts endpoint)', () => {
     expect(body.scope).toBe('token')
   })
 })
-

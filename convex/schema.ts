@@ -36,4 +36,27 @@ export default defineSchema({
   })
     .index('by_userId', ['userId'])
     .index('by_tokenHash', ['tokenHash']),
+
+  userPreferences: defineTable({
+    userId: v.id('users'),
+    dayMinMins: v.number(),
+    dayMaxMins: v.number(),
+    exportColumns: v.array(v.string()),
+    exportAggregation: v.union(
+      v.literal('none'),
+      v.literal('daily'),
+      v.literal('weekly'),
+    ),
+    weekNoDisplayMode: v.optional(
+      v.union(v.literal('iso'), v.literal('monthOrdinal')),
+    ),
+    weekRangeDisplayMode: v.optional(
+      v.union(
+        v.literal('isoShort'),
+        v.literal('euSlashIsoWeek'),
+        v.literal('monthCalendarSpan'),
+      ),
+    ),
+    exportHeaderOverrides: v.optional(v.record(v.string(), v.string())),
+  }).index('by_userId', ['userId']),
 })

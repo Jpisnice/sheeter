@@ -1,8 +1,4 @@
-import {
-  HOUR,
-  MINUTE,
-  RateLimiter,
-} from '@convex-dev/rate-limiter'
+import { HOUR, MINUTE, RateLimiter } from '@convex-dev/rate-limiter'
 import { components } from './_generated/api'
 
 // Named limit buckets shared across HTTP actions and mutations.

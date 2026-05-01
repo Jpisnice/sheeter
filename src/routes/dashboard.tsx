@@ -8,6 +8,7 @@ import { TopBar } from '../components/TopBar'
 import { TaskEditor } from '../components/TaskEditor'
 import type { EditorSubmission } from '../components/TaskEditor'
 import { formatLongDate, getISOWeek, todayString } from '../lib/weekUtils'
+import { DEFAULT_DAY_MAX_MINS, DEFAULT_DAY_MIN_MINS } from '../lib/prefs'
 
 export const Route = createFileRoute('/dashboard')({ component: DashboardPage })
 
@@ -26,6 +27,7 @@ function DashboardPage() {
 
 function Dashboard() {
   const today = useQuery(api.entries.getToday)
+  const prefs = useQuery(api.userPreferences.get)
   const logEntry = useMutation(api.entries.logEntry)
 
   const [busy, setBusy] = useState(false)
@@ -36,8 +38,7 @@ function Dashboard() {
   const weekNo = getISOWeek()
 
   const initialTasks = useMemo(
-    () =>
-      today?.tasks.map((t) => ({ label: t.label, hours: t.hours })) ?? [],
+    () => today?.tasks.map((t) => ({ label: t.label, hours: t.hours })) ?? [],
     [today],
   )
 
@@ -84,6 +85,8 @@ function Dashboard() {
         primaryLabel={isExisting ? 'Update day' : 'Log day'}
         onSubmit={onSubmit}
         autoFocus={!isExisting}
+        dayMinMins={prefs?.dayMinMins ?? DEFAULT_DAY_MIN_MINS}
+        dayMaxMins={prefs?.dayMaxMins ?? DEFAULT_DAY_MAX_MINS}
       />
 
       {toast ? (
