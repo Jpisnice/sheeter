@@ -412,3 +412,7 @@ Files prefixed with `demo` can be safely deleted. They are there to provide a st
 You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
 
 For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+
+## TODO
+
+- Add a holidays feature: allow users to import holidays via JSON, store them per user, and adapt dashboard/history UI to clearly mark holiday dates for a more personal timesheet experience.
